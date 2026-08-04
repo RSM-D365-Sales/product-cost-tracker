@@ -84,29 +84,12 @@ export function AppShell({
         </div>
       </div>
 
-      <footer className="sticky bottom-0 border-t border-stroke bg-[#F3F2F1] px-4 py-[6px] text-sm text-ink-secondary">
-        <div className="mx-auto w-full max-w-[1600px]">
-          {statusBar}
-          <DemoDisclosure />
-        </div>
-      </footer>
+      {statusBar ? (
+        <footer className="sticky bottom-0 border-t border-stroke bg-[#F3F2F1] px-4 py-[6px] text-sm text-ink-secondary">
+          <div className="mx-auto w-full max-w-[1600px]">{statusBar}</div>
+        </footer>
+      ) : null}
     </div>
-  )
-}
-
-/**
- * Deliberately quiet, deliberately always on screen. The page is a convincing
- * copy of a Finance and Operations form, so the one thing it must never do is
- * leave a viewer thinking they are looking at a live tenant — and a note in the
- * README does not travel with a screenshot or a forwarded link.
- */
-function DemoDisclosure() {
-  return (
-    <p className="mt-[3px] text-2xs leading-[13px] text-ink-disabled">
-      Demonstration prototype by RSM US LLP. Every item, vendor, order, cost and
-      date shown is synthetic — this is not a live environment and not
-      affiliated with or endorsed by Microsoft.
-    </p>
   )
 }
 

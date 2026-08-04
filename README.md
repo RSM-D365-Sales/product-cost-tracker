@@ -519,16 +519,3 @@ BASE_PATH=/product-cost-tracker/ npm run build   # → web/dist
 Keep `VITE_DATA_PROVIDER=mock` for a public static host — the `odata` and
 `service` providers need the proxy, which cannot run on GitHub Pages. Routing is
 hash-based, so no SPA rewrite rules or `404.html` fallback are needed.
-
-## Demo disclosure
-
-This is a presales demonstration prototype built by RSM US LLP. **Every figure
-in it is synthetic** — items, vendors, purchase orders, production orders,
-quantities, costs, batch numbers and dates are all generated for the demo and
-represent no real organisation's data.
-
-It reproduces the look and feel of a Dynamics 365 Finance and Supply Chain
-Management form so the capability reads as native. It is **not a live
-environment**, and it is **not affiliated with, sponsored by, or endorsed by
-Microsoft**. The same notice is rendered in the application footer so it travels
-with a screenshot or a forwarded link.
