@@ -497,15 +497,13 @@ export function ProductionCostInquiry({
   )
 }
 
+/** Mirrors the product cost inquiry: hidden on the seeded provider. */
 function ProviderBadge({ provider }: { provider: ProductCostProvider }) {
-  const tone =
-    provider.kind === 'mock'
-      ? 'border-status-warn/40 bg-status-warnBg text-status-warn'
-      : 'border-status-good/40 bg-status-goodBg text-status-good'
+  if (provider.kind === 'mock') return null
 
   return (
     <span
-      className={`inline-flex items-center gap-[6px] border px-2 py-[2px] text-sm ${tone}`}
+      className="inline-flex items-center gap-[6px] border border-status-good/40 bg-status-goodBg px-2 py-[2px] text-sm text-status-good"
       title={`Data provider: ${provider.kind}`}
     >
       <span className="h-[6px] w-[6px] rounded-full bg-current" />
@@ -535,9 +533,11 @@ function StatusBar({
       {result && !loading ? (
         <span>Calculated in {result.elapsedMs} ms</span>
       ) : null}
-      <span className="ml-auto">
-        Source: {provider.label} ({provider.kind})
-      </span>
+      {provider.kind === 'mock' ? null : (
+        <span className="ml-auto">
+          Source: {provider.label} ({provider.kind})
+        </span>
+      )}
     </div>
   )
 }

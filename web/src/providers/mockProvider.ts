@@ -83,7 +83,7 @@ export const mockProvider: ProductCostProvider = {
     if (!item) {
       throw new ProviderError(
         `Item number ${query.itemNumber} does not exist.`,
-        `Demo data holds ${ITEMS.length} released products, including ` +
+        `${ITEMS.length} released products are set up, including ` +
           `${FOCUS_ITEMS.map((i) => i.itemNumber).join(', ')}. ` +
           'Open the Item lookup to browse the rest.',
       )
@@ -124,7 +124,7 @@ export const mockProvider: ProductCostProvider = {
     if (!item) {
       throw new ProviderError(
         `Item number ${query.itemNumber} does not exist.`,
-        `Demo data holds ${ITEMS.length} released products. ` +
+        `${ITEMS.length} released products are set up. ` +
           `Produced items are ${producedItems()
             .map((i) => i.itemNumber)
             .join(', ')}.`,
