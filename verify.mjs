@@ -44,17 +44,20 @@ async function checkAnchor(a) {
   check(`anchor ${a.receipt}`, ok, ok ? '' : joined)
 }
 
+/** The Item lookup's text input, on whichever page is open. */
+const itemField = () =>
+  page
+    .locator('div.relative')
+    .filter({ has: page.getByRole('button', { name: 'Open Item lookup' }) })
+    .locator('input')
+
 /** Types an item number into the Item lookup and runs the inquiry. */
 async function runFor(itemNumber) {
   // The parameters block collapses itself once a run returns rows.
   const show = page.getByRole('button', { name: 'Show parameters' })
   if (await show.count()) await show.first().click()
 
-  const field = page
-    .locator('div.relative')
-    .filter({ has: page.getByRole('button', { name: 'Open Item lookup' }) })
-    .locator('input')
-  await field.fill(itemNumber)
+  await itemField().fill(itemNumber)
   // Dismiss the lookup flyout so it does not cover the action pane.
   await page.keyboard.press('Escape')
 
@@ -62,9 +65,26 @@ async function runFor(itemNumber) {
   await page.waitForTimeout(900)
 }
 
-// The item defaults to F440 under the mock provider; run the inquiry.
+// The form opens with no item chosen, so nothing can be retrieved until one is.
+check(
+  'item is empty on load',
+  (await itemField().inputValue()) === '',
+  await itemField().inputValue(),
+)
 await page.getByRole('button', { name: 'Run', exact: true }).click()
-await page.waitForTimeout(900)
+await page.waitForTimeout(400)
+check(
+  'running with no item asks for one',
+  (await page.locator('body').innerText()).includes('Item is a required field.'),
+)
+check(
+  'grid stays empty until an item is chosen',
+  (await page.locator('table.f-grid tbody').innerText()).includes(
+    'Enter an item number and select Run',
+  ),
+)
+
+await runFor('F440')
 
 const rowCount = await page.locator('table.f-grid tbody tr').count()
 check('grid returns rows', rowCount > 0, `${rowCount} tbody rows`)
@@ -279,19 +299,20 @@ const planQuantity = async (label) =>
 async function planFor(itemNumber) {
   const show = page.getByRole('button', { name: 'Show parameters' })
   if (await show.count()) await show.first().click()
-  const field = page
-    .locator('div.relative')
-    .filter({ has: page.getByRole('button', { name: 'Open Item lookup' }) })
-    .locator('input')
-  await field.fill(itemNumber)
+  await itemField().fill(itemNumber)
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Run inquiry', exact: true }).click()
   await page.waitForTimeout(1000)
 }
 
-// The item defaults to FG816 under the mock provider.
-await page.getByRole('button', { name: 'Run', exact: true }).click()
-await page.waitForTimeout(1100)
+// This page opens empty too.
+check(
+  'production item is empty on load',
+  (await itemField().inputValue()) === '',
+  await itemField().inputValue(),
+)
+await planFor('FG816')
+await page.waitForTimeout(100)
 
 const planRows = await page
   .locator('section', { hasText: 'Production plan' })

@@ -29,8 +29,9 @@ npm run dev          # http://localhost:5173
 ```
 
 Out of the box it runs on **seeded demo data with no network calls**, so it
-demos on a plane or behind a customer firewall. Item `F440` is pre-filled;
-press **Run**.
+demos on a plane or behind a customer firewall. Both pages open with an empty
+Item field — pick one from the lookup (`F440` is the one the demo script
+follows) and press **Run**.
 
 The hamburger at the top left opens the navigation pane. The two pages are also
 addressable directly — `#/product-cost` and `#/production-cost`, each accepting
@@ -478,7 +479,11 @@ npm run dev        # one terminal
 node verify.mjs    # another — asserts the anchor rows still hold
 ```
 
-34 checks.
+38 checks.
+
+*Both pages* — that the Item field opens empty, that pressing Run without one
+asks for it instead of guessing, and that the grid stays empty until an item is
+chosen.
 
 *Product cost inquiry* — the three `F440` anchors, that raw material only ever
 lands in site 2 / warehouse 24, the three `FG816` production anchors, that a

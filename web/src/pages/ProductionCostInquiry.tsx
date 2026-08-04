@@ -62,10 +62,11 @@ export function ProductionCostInquiry({
   initialItem?: string
   onNavigate?: (pageId: PageId, params?: Record<string, string>) => void
 }) {
+  // Opens empty. An item arriving on the hash from the product cost inquiry
+  // still fills the field, but nothing is chosen on the operator's behalf.
   const [form, setForm] = useState<ProductionParamsForm>({
     ...EMPTY_PRODUCTION_PARAMS,
-    itemNumber:
-      initialItem ?? (provider.kind === 'mock' ? 'FG816' : ''),
+    itemNumber: initialItem ?? '',
   })
   const [result, setResult] = useState<ProductionCostResult | null>(null)
   const [loading, setLoading] = useState(false)
