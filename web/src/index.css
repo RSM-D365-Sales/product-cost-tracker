@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans text-base antialiased;
+  }
+
+  /* F&O suppresses the native number spinners; the fields are typed, not nudged. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-stroke-strong/50 rounded-full border-[3px] border-solid border-transparent bg-clip-content;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-stroke-strong/80 bg-clip-content;
+  }
+}
+
+@layer components {
+  /* --- Fields -------------------------------------------------------- */
+
+  /*
+   * F&O text inputs: boxed, light border, and a 2px brand-coloured underline
+   * that appears on focus. The negative bottom margin on focus keeps the field
+   * from shifting by a pixel when that underline thickens.
+   */
+  .f-input {
+    @apply h-[26px] w-full rounded-none border border-[#D1D1D1] border-b-[#616161]
+           bg-white px-2 text-base text-ink outline-none transition-colors
+           placeholder:text-ink-disabled
+           hover:border-[#A19F9D] hover:border-b-[#242424]
+           focus:border-b-2 focus:border-b-brand focus:pb-px
+           disabled:cursor-not-allowed disabled:border-[#E1DFDD] disabled:bg-[#F3F2F1] disabled:text-ink-disabled;
+  }
+
+  .f-input-num {
+    @apply text-right tabular-nums;
+  }
+
+  .f-label {
+    @apply mb-[2px] block select-none text-sm font-normal text-ink-secondary;
+  }
+
+  /* --- Buttons ------------------------------------------------------- */
+
+  .f-btn {
+    @apply inline-flex h-[26px] select-none items-center gap-[6px] whitespace-nowrap
+           rounded-none border border-transparent px-2 text-base text-ink
+           transition-colors
+           hover:bg-[#F3F2F1] active:bg-[#EDEBE9]
+           disabled:cursor-not-allowed disabled:text-ink-disabled disabled:hover:bg-transparent;
+  }
+
+  .f-btn-primary {
+    @apply border-brand bg-brand text-white hover:bg-brand-hover active:bg-brand-pressed
+           disabled:border-[#E1DFDD] disabled:bg-[#F3F2F1] disabled:text-ink-disabled;
+  }
+
+  .f-btn-icon {
+    @apply inline-flex h-[26px] w-[26px] items-center justify-center rounded-none
+           text-ink-secondary transition-colors hover:bg-[#F3F2F1] hover:text-ink;
+  }
+
+  /* --- Links --------------------------------------------------------- */
+
+  .f-link {
+    @apply cursor-pointer text-brand underline decoration-transparent underline-offset-2
+           transition-colors hover:text-brand-hover hover:decoration-current;
+  }
+
+  /* --- Grid ---------------------------------------------------------- */
+
+  .f-grid {
+    @apply w-full border-separate border-spacing-0 text-base;
+  }
+
+  .f-grid thead th {
+    @apply sticky top-0 z-10 select-none border-b border-stroke bg-[#F3F2F1]
+           px-2 py-[6px] text-left align-bottom text-sm font-semibold text-ink;
+  }
+
+  .f-grid tbody td {
+    @apply border-b border-stroke-subtle px-2 py-[5px] align-middle;
+  }
+
+  .f-grid tbody tr:hover td {
+    @apply bg-[#F3F2F1];
+  }
+
+  .f-grid tbody tr[data-selected='true'] td {
+    @apply bg-brand-tint;
+  }
+
+  .f-num {
+    @apply text-right tabular-nums;
+  }
+}

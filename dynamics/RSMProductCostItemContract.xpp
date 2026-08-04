@@ -1,0 +1,73 @@
+/// <summary>
+/// Item header information for the Summary block.
+/// </summary>
+[DataContract]
+class RSMProductCostItemContract
+{
+    private ItemId      itemNumber;
+    private Name        productName;
+    private UnitOfMeasureSymbol unit;
+    private CurrencyCode currency;
+    private Price       currentCost;
+    private Price       sellingPrice;
+    private ItemGroupId itemGroupId;
+    private str         costingMethod;
+
+    [DataMember('itemNumber')]
+    public ItemId parmItemNumber(ItemId _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+
+    [DataMember('productName')]
+    public Name parmProductName(Name _value = productName)
+    {
+        productName = _value;
+        return productName;
+    }
+
+    [DataMember('unit')]
+    public UnitOfMeasureSymbol parmUnit(UnitOfMeasureSymbol _value = unit)
+    {
+        unit = _value;
+        return unit;
+    }
+
+    [DataMember('currency')]
+    public CurrencyCode parmCurrency(CurrencyCode _value = currency)
+    {
+        currency = _value;
+        return currency;
+    }
+
+    /// <summary>Active inventory cost price per unit.</summary>
+    [DataMember('currentCost')]
+    public Price parmCurrentCost(Price _value = currentCost)
+    {
+        currentCost = _value;
+        return currentCost;
+    }
+
+    [DataMember('sellingPrice')]
+    public Price parmSellingPrice(Price _value = sellingPrice)
+    {
+        sellingPrice = _value;
+        return sellingPrice;
+    }
+
+    [DataMember('itemGroupId')]
+    public ItemGroupId parmItemGroupId(ItemGroupId _value = itemGroupId)
+    {
+        itemGroupId = _value;
+        return itemGroupId;
+    }
+
+    [DataMember('costingMethod')]
+    public str parmCostingMethod(str _value = costingMethod)
+    {
+        costingMethod = _value;
+        return costingMethod;
+    }
+
+}

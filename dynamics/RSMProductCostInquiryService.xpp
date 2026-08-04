@@ -1,0 +1,544 @@
+/// <summary>
+/// Product cost inquiry service.
+///
+/// Returns every posted product receipt line for an item, with purchase-order
+/// charges allocated down to the line, so the caller can present landed cost
+/// and margin per receipt.
+///
+/// Why this exists rather than the caller joining standard data entities:
+///
+///   * Header charges are stored ONCE against the order (MarkupTrans against
+///     PurchTable), not per line. Turning that into a per-unit add-on cost
+///     requires spreading the amount across every line of the order by the
+///     order's allocation method, then prorating the receiving line's share by
+///     how much of the ordered quantity that receipt actually covered. Doing
+///     that outside F&O means re-implementing it and keeping it in step.
+///
+///   * Whether a charge is financial (expensed) or stock (capitalised into
+///     inventory value) is a property of the charge code's posting setup. That
+///     is not exposed on the OData charge entities, so an external caller has
+///     to hard-code a list of codes. Here it is read directly.
+///
+///   * Net-weight allocation needs the item's weight, which the purchase order
+///     line entity does not expose either.
+///
+/// -----------------------------------------------------------------------
+/// BEFORE YOU COMPILE
+/// A handful of member and enum names vary between application versions.
+/// Each one is marked with a VERIFY comment. Everything else is stable.
+/// -----------------------------------------------------------------------
+/// </summary>
+class RSMProductCostInquiryService extends SysOperationServiceBase
+{
+    /// <summary>
+    /// Main entry point. Exposed as
+    ///   POST /api/services/RSMProductCostServiceGroup/RSMProductCostInquiryService/getProductCost
+    /// </summary>
+    /// <param name = "_request">Query parameters. Item number is mandatory.</param>
+    /// <returns>Item header, costed receipt lines, and any non-fatal warnings.</returns>
+    public RSMProductCostResultContract getProductCost(RSMProductCostQueryContract _request)
+    {
+        RSMProductCostResultContract result = new RSMProductCostResultContract();
+
+        if (!_request || !_request.parmItemNumber())
+        {
+            throw error("@SYS26332");  // "Item number must be specified."
+        }
+
+        ItemId itemId = _request.parmItemNumber();
+
+        if (!InventTable::exist(itemId))
+        {
+            throw error(strFmt("Item number %1 does not exist.", itemId));
+        }
+
+        result.parmItem(this.buildItemContract(itemId));
+
+        TransDate fromDate;
+        TransDate toDate;
+        [fromDate, toDate] = this.resolveWindow(_request);
+
+        // Cache of allocated header charges, keyed by PurchLine.RecId, built
+        // once per purchase order rather than once per receipt line.
+        Map allocatedByPurchLine = new Map(Types::Int64, Types::Class);
+        Set processedOrders      = new Set(Types::Int64);
+        Set warningsSeen         = new Set(Types::String);
+
+        VendPackingSlipTrans    packingSlipTrans;
+        VendPackingSlipJour     packingSlipJour;
+        PurchLine               purchLine;
+        PurchTable              purchTable;
+        InventDim               inventDim;
+
+        while select packingSlipTrans
+            where packingSlipTrans.ItemId == itemId
+               && packingSlipTrans.Qty    != 0
+            join packingSlipJour
+                where packingSlipJour.PackingSlipId  == packingSlipTrans.PackingSlipId
+                   && packingSlipJour.InternalPackingSlipId == packingSlipTrans.InternalPackingSlipId  // VERIFY: present on current versions; drop if absent
+            join purchLine
+                where purchLine.InventTransId == packingSlipTrans.InventTransId
+            join purchTable
+                where purchTable.PurchId == purchLine.PurchId
+            join inventDim
+                where inventDim.InventDimId == packingSlipTrans.InventDimId
+        {
+            // ---- Filters ---------------------------------------------------
+            if (fromDate && packingSlipJour.DeliveryDate < fromDate)
+            {
+                continue;
+            }
+            if (toDate && packingSlipJour.DeliveryDate > toDate)
+            {
+                continue;
+            }
+            if (_request.parmPurchaseOrderNumber()
+                && purchTable.PurchId != _request.parmPurchaseOrderNumber())
+            {
+                continue;
+            }
+            if (_request.parmSiteId() && inventDim.InventSiteId != _request.parmSiteId())
+            {
+                continue;
+            }
+            if (_request.parmWarehouseId()
+                && inventDim.InventLocationId != _request.parmWarehouseId())
+            {
+                continue;
+            }
+            if (_request.parmLocationId() && inventDim.wMSLocationId != _request.parmLocationId())
+            {
+                continue;
+            }
+            if (_request.parmBatchNumber()
+                && inventDim.inventBatchId != _request.parmBatchNumber())
+            {
+                continue;
+            }
+
+            // ---- Allocate this order's header charges, once ----------------
+            if (!processedOrders.in(purchTable.RecId))
+            {
+                this.allocateOrderCharges(purchTable, allocatedByPurchLine, result, warningsSeen);
+                processedOrders.add(purchTable.RecId);
+            }
+
+            result.addRow(this.buildLineContract(
+                packingSlipTrans,
+                packingSlipJour,
+                purchLine,
+                purchTable,
+                inventDim,
+                allocatedByPurchLine));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Collapses daysBack / fromDate / toDate into a concrete inclusive window.
+    /// daysBack wins when supplied, matching the client-side behaviour.
+    /// </summary>
+    protected container resolveWindow(RSMProductCostQueryContract _request)
+    {
+        TransDate fromDate;
+        TransDate toDate;
+
+        if (_request.parmDaysBack() > 0)
+        {
+            toDate   = DateTimeUtil::date(DateTimeUtil::getSystemDateTime());
+            fromDate = toDate - _request.parmDaysBack();
+        }
+        else
+        {
+            if (_request.parmFromDate())
+            {
+                fromDate = str2Date(_request.parmFromDate(), 321);   // 321 = YMD
+            }
+            if (_request.parmToDate())
+            {
+                toDate = str2Date(_request.parmToDate(), 321);
+            }
+        }
+
+        return [fromDate, toDate];
+    }
+
+    /// <summary>
+    /// Builds the item header: name, unit, active cost and active sales price.
+    /// </summary>
+    protected RSMProductCostItemContract buildItemContract(ItemId _itemId)
+    {
+        RSMProductCostItemContract  itemContract = new RSMProductCostItemContract();
+        InventTable                 inventTable  = InventTable::find(_itemId);
+        InventTableModule           invModule    = InventTableModule::find(_itemId, ModuleInventPurchSales::Invent);
+        InventTableModule           salesModule  = InventTableModule::find(_itemId, ModuleInventPurchSales::Sales);
+
+        itemContract.parmItemNumber(_itemId);
+        itemContract.parmProductName(inventTable.productName());
+        itemContract.parmUnit(invModule.UnitId);
+        itemContract.parmCurrency(Ledger::accountingCurrency(CompanyInfo::current()));
+        itemContract.parmItemGroupId(InventItemGroupItem::findByItemIdLegalEntity(
+            _itemId, CompanyInfo::current()).ItemGroupId);
+
+        // Base cost and base sales price from the released product's
+        // Manage costs / Sell tabs. For a standard-cost item you may prefer the
+        // active InventItemPrice record instead:
+        //     InventItemPrice::findActive(_itemId, ...).Price
+        itemContract.parmCurrentCost(invModule.Price / this.priceUnitOrOne(invModule));
+        itemContract.parmSellingPrice(salesModule.Price / this.priceUnitOrOne(salesModule));
+
+        itemContract.parmCostingMethod(enum2Str(
+            InventModelGroup::find(
+                InventModelGroupItem::findByItemIdLegalEntity(
+                    _itemId, CompanyInfo::current()).ModelGroupId).ModelId));
+
+        return itemContract;
+    }
+
+    /// <summary>Price unit guard — a zero price unit would divide by zero.</summary>
+    protected PriceUnit priceUnitOrOne(InventTableModule _module)
+    {
+        return _module.PriceUnit ? _module.PriceUnit : 1;
+    }
+
+    /// <summary>
+    /// Allocates every header charge on an order across that order's lines, and
+    /// attaches line-level charges directly.
+    ///
+    /// Results are written into <c>_allocated</c> keyed by PurchLine.RecId, as
+    /// amounts for the FULL ordered quantity. Prorating to a partial receipt
+    /// happens in buildLineContract.
+    /// </summary>
+    protected void allocateOrderCharges(
+        PurchTable  _purchTable,
+        Map         _allocated,
+        RSMProductCostResultContract _result,
+        Set         _warningsSeen)
+    {
+        MarkupTrans markupTrans;
+        PurchLine   purchLine;
+
+        // ---- Snapshot the order's lines and their allocation bases ---------
+        List        lineRecIds  = new List(Types::Int64);
+        Map         qtyByLine   = new Map(Types::Int64, Types::Real);
+        Map         amountByLine = new Map(Types::Int64, Types::Real);
+        Map         weightByLine = new Map(Types::Int64, Types::Real);
+
+        while select RecId, PurchQty, LineAmount, ItemId, PurchUnit
+            from purchLine
+            where purchLine.PurchId == _purchTable.PurchId
+        {
+            lineRecIds.addEnd(purchLine.RecId);
+            qtyByLine.insert(purchLine.RecId, purchLine.PurchQty);
+            amountByLine.insert(purchLine.RecId, purchLine.LineAmount);
+            weightByLine.insert(
+                purchLine.RecId,
+                InventTable::find(purchLine.ItemId).netWeight() * purchLine.PurchQty);
+        }
+
+        if (lineRecIds.elements() == 0)
+        {
+            return;
+        }
+
+        // ---- Header charges: MarkupTrans against PurchTable ----------------
+        while select markupTrans
+            where markupTrans.TransTableId == tableNum(PurchTable)
+               && markupTrans.TransRecId   == _purchTable.RecId
+        {
+            AmountCur total = markupTrans.CalculatedAmount
+                ? markupTrans.CalculatedAmount
+                : markupTrans.Value;
+
+            if (total == 0)
+            {
+                continue;
+            }
+
+            // X++ passes scalars by value, so the label comes back in a
+            // container alongside the basis map rather than as an out parameter.
+            Map basis;
+            str allocationLabel;
+            [basis, allocationLabel] = this.allocationBasis(
+                markupTrans, qtyByLine, amountByLine, weightByLine, lineRecIds);
+
+            real basisTotal = 0;
+            ListEnumerator le = lineRecIds.getEnumerator();
+            while (le.moveNext())
+            {
+                basisTotal += basis.lookup(le.current());
+            }
+
+            if (basisTotal == 0)
+            {
+                // Nothing to weight by — split equally rather than dropping the
+                // charge, which would silently understate landed cost.
+                le = lineRecIds.getEnumerator();
+                while (le.moveNext())
+                {
+                    basis.insert(le.current(), 1);
+                }
+                basisTotal = lineRecIds.elements();
+
+                str warning = strFmt(
+                    "Charge %1 on order %2 uses %3 allocation but no basis was available; it was split equally.",
+                    markupTrans.MarkupCode, _purchTable.PurchId, allocationLabel);
+                if (!_warningsSeen.in(warning))
+                {
+                    _warningsSeen.add(warning);
+                    _result.addWarning(warning);
+                }
+            }
+
+            str chargeType = this.chargeTypeOf(markupTrans.MarkupCode);
+
+            // Proportional split, with the rounding remainder pushed onto the
+            // largest line so the parts sum exactly back to the total.
+            AmountCur running = 0;
+            int64     largestLine;
+            real      largestBasis = -1;
+            int       idx = 0;
+
+            le = lineRecIds.getEnumerator();
+            while (le.moveNext())
+            {
+                int64 lineRecId = le.current();
+                real  weight    = basis.lookup(lineRecId);
+                idx++;
+
+                if (weight > largestBasis)
+                {
+                    largestBasis = weight;
+                    largestLine  = lineRecId;
+                }
+
+                AmountCur share = CurrencyExchangeHelper::amount(total * weight / basisTotal);
+                running += share;
+
+                this.appendCharge(
+                    _allocated, lineRecId, markupTrans.MarkupCode, markupTrans.Txt,
+                    chargeType, 'Header', allocationLabel, share);
+            }
+
+            AmountCur drift = total - running;
+            if (drift != 0 && largestLine)
+            {
+                this.appendCharge(
+                    _allocated, largestLine, markupTrans.MarkupCode, markupTrans.Txt,
+                    chargeType, 'Header', allocationLabel, drift);
+            }
+        }
+
+        // ---- Line charges: MarkupTrans against PurchLine -------------------
+        while select RecId from purchLine
+            where purchLine.PurchId == _purchTable.PurchId
+        {
+            while select markupTrans
+                where markupTrans.TransTableId == tableNum(PurchLine)
+                   && markupTrans.TransRecId   == purchLine.RecId
+            {
+                AmountCur amount = markupTrans.CalculatedAmount
+                    ? markupTrans.CalculatedAmount
+                    : markupTrans.Value;
+
+                if (amount == 0)
+                {
+                    continue;
+                }
+
+                this.appendCharge(
+                    _allocated, purchLine.RecId, markupTrans.MarkupCode, markupTrans.Txt,
+                    this.chargeTypeOf(markupTrans.MarkupCode), 'Line', '', amount);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns [basis, label] for a header charge: the per-line allocation
+    /// weights, plus a human-readable method name for the UI.
+    ///
+    /// The returned map is always a fresh copy. The caller overwrites it when
+    /// falling back to an equal split, and the source maps are reused for every
+    /// charge on the order, so handing back a reference would corrupt the basis
+    /// for the charges that follow.
+    /// </summary>
+    /// VERIFY: the MarkupAllocation enum literals below. Older application
+    /// versions expose a different set; the default branch keeps behaviour sane.
+    protected container allocationBasis(
+        MarkupTrans _markupTrans,
+        Map         _qtyByLine,
+        Map         _amountByLine,
+        Map         _weightByLine,
+        List        _lineRecIds)
+    {
+        Map source;
+        str label;
+
+        switch (_markupTrans.Allocation)
+        {
+            case MarkupAllocation::Qty:
+                label  = 'Quantity';
+                source = _qtyByLine;
+                break;
+
+            case MarkupAllocation::Pcs:
+                label = 'Equally';
+                break;      // no source map — every line weighs 1, filled in below
+
+            case MarkupAllocation::Weight:
+                label  = 'Net weight';
+                source = _weightByLine;
+                break;
+
+            default:
+                // MarkupAllocation::Net and anything unrecognised.
+                label  = 'Net amount';
+                source = _amountByLine;
+                break;
+        }
+
+        Map basis = new Map(Types::Int64, Types::Real);
+        ListEnumerator le = _lineRecIds.getEnumerator();
+
+        while (le.moveNext())
+        {
+            int64 lineRecId = le.current();
+            basis.insert(
+                lineRecId,
+                source && source.exists(lineRecId) ? source.lookup(lineRecId) : 1);
+        }
+
+        return [basis, label];
+    }
+
+    /// <summary>
+    /// 'Stock' when the charge code capitalises into inventory value,
+    /// 'Financial' otherwise. This is the distinction the inquiry's
+    /// "Financial charges (AOC)" column depends on.
+    /// </summary>
+    /// VERIFY: field and enum name for the debit posting type. On current
+    /// versions this is MarkupTable.PostingType against MarkupPosting::Item.
+    protected str chargeTypeOf(MarkupCode _markupCode)
+    {
+        MarkupTable markupTable = MarkupTable::find(_markupCode, MarkupModuleType::Vend);
+
+        return markupTable.PostingType == MarkupPosting::Item ? 'Stock' : 'Financial';
+    }
+
+    /// <summary>Appends one allocated charge to a purchase line's list.</summary>
+    protected void appendCharge(
+        Map         _allocated,
+        int64       _purchLineRecId,
+        MarkupCode  _chargeCode,
+        str         _description,
+        str         _chargeType,
+        str         _source,
+        str         _allocationMethod,
+        AmountCur   _amount)
+    {
+        List charges;
+
+        if (_allocated.exists(_purchLineRecId))
+        {
+            charges = _allocated.lookup(_purchLineRecId);
+        }
+        else
+        {
+            charges = new List(Types::Class);
+            _allocated.insert(_purchLineRecId, charges);
+        }
+
+        RSMProductCostChargeContract charge = new RSMProductCostChargeContract();
+        charge.parmChargeCode(_chargeCode);
+        charge.parmDescription(_description ? _description : _chargeCode);
+        charge.parmChargeType(_chargeType);
+        charge.parmSource(_source);
+        charge.parmAllocationMethod(_allocationMethod);
+        charge.parmAmount(_amount);
+
+        charges.addEnd(charge);
+    }
+
+    /// <summary>
+    /// Builds one receipt line, prorating the order-level charge allocation by
+    /// the share of ordered quantity that this receipt covered.
+    /// </summary>
+    protected RSMProductCostLineContract buildLineContract(
+        VendPackingSlipTrans _packingSlipTrans,
+        VendPackingSlipJour  _packingSlipJour,
+        PurchLine            _purchLine,
+        PurchTable           _purchTable,
+        InventDim            _inventDim,
+        Map                  _allocated)
+    {
+        RSMProductCostLineContract line = new RSMProductCostLineContract();
+
+        Qty receivedQty = abs(_packingSlipTrans.Qty);
+
+        line.parmPurchaseOrderNumber(_purchTable.PurchId);
+        line.parmPurchaseLineNumber(_purchLine.LineNumber);
+        line.parmReceiptNumber(_packingSlipTrans.PackingSlipId);
+        line.parmReceiptDate(this.isoDate(_packingSlipJour.DeliveryDate));
+        line.parmItemNumber(_packingSlipTrans.ItemId);
+        line.parmVendorAccount(_purchTable.OrderAccount);
+        line.parmVendorName(VendTable::find(_purchTable.OrderAccount).name());
+        line.parmSiteId(_inventDim.InventSiteId);
+        line.parmWarehouseId(_inventDim.InventLocationId);
+        line.parmLocationId(_inventDim.wMSLocationId);
+        line.parmBatchNumber(_inventDim.inventBatchId);
+        line.parmQuantityReceived(receivedQty);
+        line.parmUnit(_purchLine.PurchUnit);
+        line.parmCurrency(_purchTable.CurrencyCode);
+
+        // Goods-only unit price, net of line discount, excluding all charges.
+        PriceUnit priceUnit = _purchLine.PriceUnit ? _purchLine.PriceUnit : 1;
+        line.parmPurchasePriceFob(
+            (_purchLine.PurchPrice / priceUnit) - (_purchLine.LineDisc / priceUnit));
+
+        // A receipt covering half the ordered quantity absorbs half the charge.
+        real share = _purchLine.PurchQty != 0 ? receivedQty / _purchLine.PurchQty : 1;
+
+        if (_allocated.exists(_purchLine.RecId))
+        {
+            List            charges = _allocated.lookup(_purchLine.RecId);
+            ListEnumerator  le      = charges.getEnumerator();
+
+            while (le.moveNext())
+            {
+                RSMProductCostChargeContract source = le.current();
+
+                RSMProductCostChargeContract scaled = new RSMProductCostChargeContract();
+                scaled.parmChargeCode(source.parmChargeCode());
+                scaled.parmDescription(source.parmDescription());
+                scaled.parmChargeType(source.parmChargeType());
+                scaled.parmSource(source.parmSource());
+                scaled.parmAllocationMethod(source.parmAllocationMethod());
+                scaled.parmAmount(CurrencyExchangeHelper::amount(source.parmAmount() * share));
+
+                line.addCharge(scaled);
+            }
+        }
+
+        return line;
+    }
+
+    /// <summary>Formats a date as ISO-8601 (yyyy-MM-dd) for the JSON contract.</summary>
+    protected str isoDate(TransDate _date)
+    {
+        if (!_date)
+        {
+            return '';
+        }
+
+        return date2Str(
+            _date,
+            321,                    // year, month, day
+            DateDay::Digits2,
+            DateSeparator::Hyphen,
+            DateMonth::Digits2,
+            DateSeparator::Hyphen,
+            DateYear::Digits4);
+    }
+
+}

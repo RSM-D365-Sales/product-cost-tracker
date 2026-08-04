@@ -1,0 +1,55 @@
+/// <summary>
+/// Response contract. Serialises into exactly the shape consumed by
+/// web/src/providers/serviceProvider.ts.
+/// </summary>
+[DataContract]
+class RSMProductCostResultContract
+{
+    private RSMProductCostItemContract item;
+    private List rows;      // of RSMProductCostLineContract
+    private List warnings;  // of str
+
+    public void new()
+    {
+        rows     = new List(Types::Class);
+        warnings = new List(Types::String);
+    }
+
+    [DataMember('item')]
+    public RSMProductCostItemContract parmItem(RSMProductCostItemContract _value = item)
+    {
+        item = _value;
+        return item;
+    }
+
+    [DataMember('rows')]
+    [AifCollectionTypeAttribute('rows', Types::Class, classStr(RSMProductCostLineContract))]
+    public List parmRows(List _value = rows)
+    {
+        rows = _value;
+        return rows;
+    }
+
+    /// <summary>
+    /// Non-fatal notes surfaced in the UI message bar — for example when a
+    /// net-weight allocation had to fall back because no weight is maintained.
+    /// </summary>
+    [DataMember('warnings')]
+    [AifCollectionTypeAttribute('warnings', Types::String)]
+    public List parmWarnings(List _value = warnings)
+    {
+        warnings = _value;
+        return warnings;
+    }
+
+    public void addRow(RSMProductCostLineContract _row)
+    {
+        rows.addEnd(_row);
+    }
+
+    public void addWarning(str _warning)
+    {
+        warnings.addEnd(_warning);
+    }
+
+}

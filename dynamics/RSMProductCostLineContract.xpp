@@ -1,0 +1,150 @@
+/// <summary>
+/// One product receipt line with its allocated charges.
+/// Landed cost and margin are deliberately NOT returned — the client derives
+/// them from purchasePriceFob and charges so the formula has one definition.
+/// </summary>
+[DataContract]
+class RSMProductCostLineContract
+{
+    private PurchId         purchaseOrderNumber;
+    private LineNum         purchaseLineNumber;
+    private PackingSlipId   receiptNumber;
+    private str             receiptDate;        // ISO-8601 yyyy-MM-dd
+    private ItemId          itemNumber;
+    private VendAccount     vendorAccount;
+    private Name            vendorName;
+    private InventSiteId    siteId;
+    private InventLocationId warehouseId;
+    private WMSLocationId   locationId;
+    private InventBatchId   batchNumber;
+    private Qty             quantityReceived;
+    private UnitOfMeasureSymbol unit;
+    private CurrencyCode    currency;
+    private Price           purchasePriceFob;
+    private List            charges;            // of RSMProductCostChargeContract
+
+    public void new()
+    {
+        charges = new List(Types::Class);
+    }
+
+    [DataMember('purchaseOrderNumber')]
+    public PurchId parmPurchaseOrderNumber(PurchId _value = purchaseOrderNumber)
+    {
+        purchaseOrderNumber = _value;
+        return purchaseOrderNumber;
+    }
+
+    [DataMember('purchaseLineNumber')]
+    public LineNum parmPurchaseLineNumber(LineNum _value = purchaseLineNumber)
+    {
+        purchaseLineNumber = _value;
+        return purchaseLineNumber;
+    }
+
+    [DataMember('receiptNumber')]
+    public PackingSlipId parmReceiptNumber(PackingSlipId _value = receiptNumber)
+    {
+        receiptNumber = _value;
+        return receiptNumber;
+    }
+
+    [DataMember('receiptDate')]
+    public str parmReceiptDate(str _value = receiptDate)
+    {
+        receiptDate = _value;
+        return receiptDate;
+    }
+
+    [DataMember('itemNumber')]
+    public ItemId parmItemNumber(ItemId _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+
+    [DataMember('vendorAccount')]
+    public VendAccount parmVendorAccount(VendAccount _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
+    }
+
+    [DataMember('vendorName')]
+    public Name parmVendorName(Name _value = vendorName)
+    {
+        vendorName = _value;
+        return vendorName;
+    }
+
+    [DataMember('siteId')]
+    public InventSiteId parmSiteId(InventSiteId _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+
+    [DataMember('warehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+
+    [DataMember('locationId')]
+    public WMSLocationId parmLocationId(WMSLocationId _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+
+    [DataMember('batchNumber')]
+    public InventBatchId parmBatchNumber(InventBatchId _value = batchNumber)
+    {
+        batchNumber = _value;
+        return batchNumber;
+    }
+
+    [DataMember('quantityReceived')]
+    public Qty parmQuantityReceived(Qty _value = quantityReceived)
+    {
+        quantityReceived = _value;
+        return quantityReceived;
+    }
+
+    [DataMember('unit')]
+    public UnitOfMeasureSymbol parmUnit(UnitOfMeasureSymbol _value = unit)
+    {
+        unit = _value;
+        return unit;
+    }
+
+    [DataMember('currency')]
+    public CurrencyCode parmCurrency(CurrencyCode _value = currency)
+    {
+        currency = _value;
+        return currency;
+    }
+
+    /// <summary>Goods-only purchase price per unit, excluding all charges.</summary>
+    [DataMember('purchasePriceFob')]
+    public Price parmPurchasePriceFob(Price _value = purchasePriceFob)
+    {
+        purchasePriceFob = _value;
+        return purchasePriceFob;
+    }
+
+    [DataMember('charges')]
+    [AifCollectionTypeAttribute('charges', Types::Class, classStr(RSMProductCostChargeContract))]
+    public List parmCharges(List _value = charges)
+    {
+        charges = _value;
+        return charges;
+    }
+
+    public void addCharge(RSMProductCostChargeContract _charge)
+    {
+        charges.addEnd(_charge);
+    }
+
+}

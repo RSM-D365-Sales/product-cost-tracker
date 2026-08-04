@@ -1,0 +1,105 @@
+/// <summary>
+/// Request contract for the Product cost inquiry.
+/// Only ItemNumber is mandatory; every other member narrows the result.
+/// Dates are ISO-8601 strings (yyyy-MM-dd) so the JSON contract stays
+/// unambiguous across the wire regardless of the caller's locale.
+/// </summary>
+[DataContract]
+class RSMProductCostQueryContract
+{
+    private ItemId      itemNumber;
+    private InventSiteId    siteId;
+    private InventLocationId warehouseId;
+    private WMSLocationId   locationId;
+    private InventBatchId   batchNumber;
+    private PurchId     purchaseOrderNumber;
+    private str         fromDate;
+    private str         toDate;
+    private int         daysBack;
+    private DataAreaId  company;
+
+    [DataMember('itemNumber')]
+    public ItemId parmItemNumber(ItemId _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+
+    [DataMember('siteId')]
+    public InventSiteId parmSiteId(InventSiteId _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+
+    [DataMember('warehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+
+    [DataMember('locationId')]
+    public WMSLocationId parmLocationId(WMSLocationId _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+
+    [DataMember('batchNumber')]
+    public InventBatchId parmBatchNumber(InventBatchId _value = batchNumber)
+    {
+        batchNumber = _value;
+        return batchNumber;
+    }
+
+    [DataMember('purchaseOrderNumber')]
+    public PurchId parmPurchaseOrderNumber(PurchId _value = purchaseOrderNumber)
+    {
+        purchaseOrderNumber = _value;
+        return purchaseOrderNumber;
+    }
+
+    [DataMember('fromDate')]
+    public str parmFromDate(str _value = fromDate)
+    {
+        fromDate = _value;
+        return fromDate;
+    }
+
+    [DataMember('toDate')]
+    public str parmToDate(str _value = toDate)
+    {
+        toDate = _value;
+        return toDate;
+    }
+
+    /// <summary>
+    /// Rolling window ending today. When greater than zero this overrides
+    /// fromDate and toDate, matching the behaviour of the parameters panel.
+    /// </summary>
+    [DataMember('daysBack')]
+    public int parmDaysBack(int _value = daysBack)
+    {
+        daysBack = _value;
+        return daysBack;
+    }
+
+    [DataMember('company')]
+    public DataAreaId parmCompany(DataAreaId _value = company)
+    {
+        company = _value;
+        return company;
+    }
+
+    /// <summary>
+    /// Resolves daysBack / fromDate / toDate into a concrete inclusive window.
+    /// An unset bound comes back as dateNull().
+    /// </summary>
+    public void resolveDateWindow(TransDate _from, TransDate _to)
+    {
+        // Out-parameter helper is intentionally not used here; see
+        // RSMProductCostInquiryService.resolveWindow which does the work.
+    }
+
+}

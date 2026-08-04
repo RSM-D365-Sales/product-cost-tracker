@@ -1,0 +1,63 @@
+/// <summary>
+/// One charge allocated to one product receipt line.
+/// `amount` is the extended amount in the transaction currency; the client
+/// derives the per-unit figure so that every data provider agrees on it.
+/// </summary>
+[DataContract]
+class RSMProductCostChargeContract
+{
+    private MarkupCode  chargeCode;
+    private str         description;
+    private str         chargeType;         // 'Financial' | 'Stock'
+    private str         source;             // 'Header' | 'Line'
+    private str         allocationMethod;
+    private AmountCur   amount;
+
+    [DataMember('chargeCode')]
+    public MarkupCode parmChargeCode(MarkupCode _value = chargeCode)
+    {
+        chargeCode = _value;
+        return chargeCode;
+    }
+
+    [DataMember('description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+
+    /// <summary>
+    /// 'Financial' when the charge is expensed (the AOC bucket in the inquiry),
+    /// 'Stock' when it capitalises into the inventory value of the goods.
+    /// Derived from the charge code's debit posting type, not guessed.
+    /// </summary>
+    [DataMember('chargeType')]
+    public str parmChargeType(str _value = chargeType)
+    {
+        chargeType = _value;
+        return chargeType;
+    }
+
+    [DataMember('source')]
+    public str parmSource(str _value = source)
+    {
+        source = _value;
+        return source;
+    }
+
+    [DataMember('allocationMethod')]
+    public str parmAllocationMethod(str _value = allocationMethod)
+    {
+        allocationMethod = _value;
+        return allocationMethod;
+    }
+
+    [DataMember('amount')]
+    public AmountCur parmAmount(AmountCur _value = amount)
+    {
+        amount = _value;
+        return amount;
+    }
+
+}

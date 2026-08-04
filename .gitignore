@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.local
+*.local
+
+# Verification output — except the one the README embeds
+verify-*.png
+!verify-inquiry.png
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Discovery material — keep customer screenshots out of the repo
+Screenshots/
