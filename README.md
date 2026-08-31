@@ -591,7 +591,7 @@ npm run dev        # one terminal
 node verify.mjs    # another — asserts the anchor rows still hold
 ```
 
-49 checks.
+51 checks.
 
 *Both pages* — that the Item field opens empty, that pressing Run without one
 asks for it instead of guessing, and that the grid stays empty until an item is
@@ -619,8 +619,9 @@ that the variance bridge splits the four cost groups and packaging drills down
 to its component lines, that Copilot writes an analysis quoting the item and
 ending in actions, and that a component drills back through to its receipts.
 
-*Embedding* — that `?embed=1` removes the Finance and Operations bar with the
-form itself unchanged.
+*Embedding* — that the Finance and Operations bar is hidden by default, and
+that `?embed=0` restores the standalone chrome whose navigation pane routes
+between the two inquiries.
 
 Writes `verify-inquiry.png`, `verify-variance.png`, `verify-impact.png`,
 `verify-production.png`, `verify-trend.png`, `verify-production-plan.png`,
@@ -650,18 +651,17 @@ hash-based, so no SPA rewrite rules or `404.html` fallback are needed.
 ### Embedding in Finance and Supply Chain
 
 The workspace is built to be hosted inside a real F&SC environment (iframe or
-website host control on a workspace). Embedded, the app must not draw its own
-dark **Finance and Operations** bar — the host already has one — so the chrome
-is parameterised ([`web/src/lib/embed.ts`](web/src/lib/embed.ts)):
-
-```
-.../index.html?embed=1#/product-cost      per URL, no rebuild — the form to use
-                                          in the workspace configuration
-.../index.html#/product-cost?embed=1      also accepted; latched for the session
-VITE_EMBED=1                              in web/.env, for a build that is only
-                                          ever embedded
-```
-
-Everything below the bar — breadcrumb, caption, action pane, FastTabs, status
-bar — renders unchanged, and cross-page navigation stays available through the
+website host control on a workspace), so **it draws no dark "Finance and
+Operations" bar of its own by default** — the host already has one, and two of
+them reads as a mockup. Cross-page navigation stays available through the
 action pane buttons.
+
+For a standalone demo outside D365, restore the full chrome — banner, page
+search, navigation pane — with the same parameter
+([`web/src/lib/embed.ts`](web/src/lib/embed.ts)):
+
+```
+.../index.html?embed=0#/product-cost      per URL, no rebuild
+.../index.html#/product-cost?embed=0      also accepted; latched for the session
+VITE_EMBED=0                              in web/.env, to fix a build that way
+```

@@ -33,6 +33,12 @@ check(
   (await page.locator('h1').innerText()) === 'Product cost inquiry',
 )
 
+// Built to be embedded in a real F&SC workspace: no bar of its own by default.
+check(
+  'the Finance and Operations bar is hidden by default',
+  (await page.getByText('Finance and Operations', { exact: true }).count()) === 0,
+)
+
 /** Asserts one hand-authored anchor row is rendered with the expected figures. */
 async function checkAnchor(a) {
   const row = page.locator('table.f-grid tbody tr', { hasText: a.receipt }).first()
@@ -360,19 +366,16 @@ check(
 )
 
 // --- Production cost inquiry ----------------------------------------------
-// Reached through the navigation pane, so the routing is exercised too rather
-// than jumping straight to the hash.
-await page.getByRole('button', { name: 'Expand the navigation pane' }).click()
-await page.waitForTimeout(250)
-await page
-  .getByRole('button', { name: 'Production cost inquiry', exact: true })
-  .click()
+// Routed by hash, the way an embedding host deep-links a page. The standalone
+// chrome's navigation pane is exercised separately at the end.
+await page.evaluate(() => {
+  window.location.hash = '#/production-cost'
+})
 await page.waitForTimeout(500)
 
 check(
-  'navigation pane opens the production cost inquiry',
-  (await page.locator('h1').innerText()) === 'Production cost inquiry' &&
-    (await page.evaluate(() => location.hash)) === '#/production-cost',
+  'hash routing opens the production cost inquiry',
+  (await page.locator('h1').innerText()) === 'Production cost inquiry',
 )
 
 /** Reads a stat tile from the plan summary, e.g. "Material at risk". */
@@ -583,15 +586,27 @@ check(
   await page.evaluate(() => location.hash),
 )
 
-// --- Embedded chrome --------------------------------------------------------
-// ?embed=1 removes the app's own Finance and Operations bar so the workspace
-// can be hosted inside a real F&SC environment; the form must be unchanged.
-await page.goto(`${base}/?embed=1#/product-cost`, { waitUntil: 'networkidle' })
+// --- Standalone chrome ------------------------------------------------------
+// ?embed=0 restores the app's own Finance and Operations bar for demos run
+// outside D365, and its navigation pane must route between the two inquiries.
+await page.goto(`${base}/?embed=0#/product-cost`, { waitUntil: 'networkidle' })
 await page.waitForTimeout(300)
 check(
-  'embed=1 hides the Finance and Operations bar',
-  (await page.getByText('Finance and Operations', { exact: true }).count()) === 0 &&
-    (await page.locator('h1').innerText()) === 'Product cost inquiry',
+  'embed=0 restores the Finance and Operations bar',
+  (await page.getByText('Finance and Operations', { exact: true }).count()) ===
+    1 && (await page.locator('h1').innerText()) === 'Product cost inquiry',
+)
+
+await page.getByRole('button', { name: 'Expand the navigation pane' }).click()
+await page.waitForTimeout(250)
+await page
+  .getByRole('button', { name: 'Production cost inquiry', exact: true })
+  .click()
+await page.waitForTimeout(500)
+check(
+  'navigation pane opens the production cost inquiry',
+  (await page.locator('h1').innerText()) === 'Production cost inquiry' &&
+    (await page.evaluate(() => location.hash)) === '#/production-cost',
 )
 
 check('no console/page errors', errors.length === 0, errors.join(' ; '))

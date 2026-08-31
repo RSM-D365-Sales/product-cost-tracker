@@ -1,14 +1,18 @@
 /**
- * Whether the app is running embedded inside another shell — typically an
- * iframe or website host control on a Dynamics 365 Finance and Supply Chain
- * workspace. Embedded, the page must not draw its own "Finance and Operations"
- * navigation bar: the host already has one, and two of them reads as a mockup.
+ * Whether the app draws its own "Finance and Operations" navigation bar.
+ *
+ * It does NOT by default: this workspace is built to be embedded inside a real
+ * Dynamics 365 Finance and Supply Chain environment (iframe / website host
+ * control), where the host already has that bar and two of them reads as a
+ * mockup. For a standalone demo outside D365, `?embed=0` restores the full
+ * chrome — banner, page search, and the navigation pane.
  *
  * Resolution order, first hit wins:
- *   1. `?embed=1` in the query string (survives hash navigation, so it is the
- *      form to use in the workspace URL): `.../index.html?embed=1#/product-cost`
- *   2. `embed=1` among the hash parameters: `#/product-cost?embed=1`
- *   3. `VITE_EMBED=1` in web/.env, for a build that is only ever embedded.
+ *   1. `?embed=0` / `?embed=1` in the query string (survives hash navigation):
+ *      `.../index.html?embed=0#/product-cost`
+ *   2. The same among the hash parameters: `#/product-cost?embed=0`
+ *   3. `VITE_EMBED` in web/.env, to fix a build one way or the other.
+ *   4. Embedded (bar hidden).
  *
  * Latched once at module load. The hash form is therefore sticky for the
  * session even though in-app navigation rewrites the hash parameters.
@@ -34,7 +38,7 @@ function resolveEmbedded(): boolean {
   const fromHash =
     q >= 0 ? asFlag(new URLSearchParams(hash.slice(q + 1)).get('embed')) : undefined
 
-  return fromSearch ?? fromHash ?? asFlag(import.meta.env.VITE_EMBED) ?? false
+  return fromSearch ?? fromHash ?? asFlag(import.meta.env.VITE_EMBED) ?? true
 }
 
 export const isEmbedded = resolveEmbedded()

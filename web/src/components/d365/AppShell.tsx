@@ -15,10 +15,10 @@ import {
  * The Finance and Operations application frame: dark navigation bar, module
  * breadcrumb, page caption, then the form body on the light canvas.
  *
- * When the app is embedded inside a real F&SC workspace (`?embed=1`, or
- * VITE_EMBED — see lib/embed.ts) the dark bar is omitted entirely: the host
- * already draws it, and the page starts at the breadcrumb the way a native
- * form does.
+ * The dark bar is omitted by default — the app is built to be embedded inside
+ * a real F&SC workspace, whose host already draws it — and the page starts at
+ * the breadcrumb the way a native form does. `?embed=0` (or VITE_EMBED=0 — see
+ * lib/embed.ts) restores it for a standalone demo.
  */
 
 interface AppShellProps {
