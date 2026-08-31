@@ -3,6 +3,7 @@ import type { CatalogItem } from './seed'
 import { ITEMS, explicitOnHand, itemByNumber, seedRows } from './seed'
 import { addDaysIso } from '../lib/format'
 import { dayNumber } from '../lib/trend'
+import { costGroupOfConversionCode } from '../lib/variance'
 
 /**
  * Manufacturing master data for the production cost inquiry: shelf lives, bills
@@ -299,10 +300,6 @@ const BOM_SPECS: Record<string, BomSpec> = {
   },
 }
 
-/** Maps a background item's conversion charge codes onto BOM/route structure. */
-const DERIVED_PACKAGING_CODES = new Set(['PACK', 'CAN', 'LABEL'])
-const DERIVED_OVERHEAD_CODES = new Set(['OVHD', 'QA'])
-
 /**
  * A BOM for a background finished good, derived from the same conversion specs
  * its production receipts were costed with.
@@ -334,8 +331,12 @@ function deriveBomSpec(item: CatalogItem): BomSpec {
   let componentLine = 20
   let operationNumber = 10
 
+  // The code-to-group mapping is the same one the variance analysis reads a
+  // posted run with, so a derived BOM plans a cost in the exact group the
+  // actuals will land in.
   for (const spec of item.conversion ?? []) {
-    if (DERIVED_PACKAGING_CODES.has(spec.code)) {
+    const group = costGroupOfConversionCode(spec.code)
+    if (group === 'Packaging') {
       components.push({
         lineNumber: componentLine,
         itemNumber: spec.code,
@@ -351,8 +352,8 @@ function deriveBomSpec(item: CatalogItem): BomSpec {
       operations.push({
         operationNumber,
         description: spec.description,
-        resourceId: DERIVED_OVERHEAD_CODES.has(spec.code) ? 'OVHD-01' : 'PROD-01',
-        costGroup: DERIVED_OVERHEAD_CODES.has(spec.code) ? 'Overhead' : 'Labour',
+        resourceId: group === 'Overhead' ? 'OVHD-01' : 'PROD-01',
+        costGroup: group,
         costPerUnit: spec.perUnit,
       })
       operationNumber += 10

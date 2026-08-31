@@ -248,6 +248,42 @@ also in the grid.
 
 ---
 
+## Landed cost variance
+
+**Cost variance** on the action pane (also a FastTab that is always present once
+there are results, collapsed, with its counts in the header) answers the
+question the trend chart raises: *which receipts left the pack, in which
+direction, and on what?*
+
+![The landed cost variance panel](verify-variance.png)
+
+Every receipt is measured against the **quantity-weighted average landed cost of
+the current result** — so the baseline follows whatever window and filters the
+inquiry ran with — and receipts outside a tolerance band (± %, editable in the
+panel, default 5) are listed with a direction and their **variance causes**:
+purchase price, transportation, cold chain, customs & duty, inspection &
+testing. Expand a flagged row for the full decomposition; the cause deltas sum
+exactly to the landed variance, because landed cost is exactly FOB plus
+charges — nothing is estimated. A receipt that *avoided* a charge its peers paid
+(no demurrage, say) shows that as a favourable cause, which is as much a finding
+as an overrun.
+
+The bucketing of charge codes into causes, and everything else the panel
+computes, lives in [`web/src/lib/variance.ts`](web/src/lib/variance.ts) — pure
+functions over the rows, in one place for the same reason `calc.ts` is.
+
+On a produced item the same panel reads production receipts: the FOB slot
+becomes the consumed batch's material cost and the causes become packaging,
+labour and overhead, so run-to-run variance on a finished good is visible from
+the purchasing page too.
+
+Note the baseline is the *whole result*: run it across two years of receipts and
+inflation itself puts the oldest and newest receipts out of bounds, which is
+honest but noisy. Narrow the window (e.g. days back = 90) to compare a receipt
+against its own season.
+
+---
+
 ### Purchase and production in one grid
 
 A produced item has no vendor and no FOB price, but reporting it as finished is
@@ -285,6 +321,21 @@ message bar rather than quietly using it.
 $10.47, the roll-up at today's landed costs comes to **$12.39**, and the margin
 a planner thinks they are making (38.2%) is not the margin they are making
 (26.9%). Twenty-four cans now cost more than the beans that go in them.
+
+**Cost variance analysis** splits that story by cost group and hunts outliers,
+in two deliberately different comparisons:
+
+- *The bridge* sets the calculated cost against the quantity-weighted average of
+  the posted runs, per group — material (food), packaging, labour, overhead —
+  with a signed variance and direction on each. Expand a group to drill into the
+  component and operation lines behind it: "packaging is up" becomes "cans are
+  up". A systematic gap on material is expected and the panel says why — the
+  calculation prices today's lots, the runs consumed the lots of their day.
+- *Runs outside tolerance* flags individual runs against **their own cohort's
+  average**, not against the calculation, so the flag means "this run left the
+  pack", with the group deltas saying in which direction and on what. Expand a
+  run for its full decomposition next to the cohort average and the calculation,
+  plus the batch its material came from.
 
 **Bill of material and route** is the evidence behind that number — every
 component with its quantity per, scrap percentage, cost group, unit cost and the
@@ -365,6 +416,24 @@ config file. The entity sets a real implementation would need, and how to probe
 your environment for them, are listed under **PRODUCTION INQUIRY — NOT MAPPED**
 in [`web/src/lib/odataConfig.ts`](web/src/lib/odataConfig.ts). Run this page on
 `VITE_DATA_PROVIDER=mock` until they are confirmed.
+
+---
+
+## Copilot analysis
+
+**Copilot** on either action pane opens an F&SC-style sidecar that writes an
+analysis of the activity the inquiry just returned — scope, cost position,
+what moved outside tolerance and in which direction, material exposure, and
+suggested actions — for whatever item, site and date window is on the screen.
+
+![The Copilot pane over the production cost inquiry](verify-copilot.png)
+
+The narrative is composed in
+[`web/src/lib/copilot.ts`](web/src/lib/copilot.ts) from the same result object
+the grids render: every figure it quotes is read off the page, so a prospect who
+checks a sentence against the grid finds the grid agrees, and the same inquiry
+always produces the same analysis. The pane re-generates whenever the inquiry is
+re-run — change the tolerance, the window or the lines and the prose follows.
 
 ---
 
@@ -456,8 +525,11 @@ web/                          Vite + React 18 + TS + Tailwind
   src/providers/              mock | odata | service, behind one interface
   src/lib/calc.ts             Landed cost, margin, charge allocation
   src/lib/production.ts       BOM roll-up, FEFO allocation, capacity scheduling
+  src/lib/variance.ts         Out-of-bounds detection + cause decomposition
+  src/lib/copilot.ts          The Copilot narrative, composed from the result
   src/lib/trend.ts            Least-squares fit + prediction interval
   src/lib/route.ts            Hash routing — two pages, no router dependency
+  src/lib/embed.ts            ?embed=1 / VITE_EMBED — chrome for F&SC embedding
   src/lib/odataConfig.ts      ← entity + field names live here, nowhere else
   src/data/seed.ts            Receipts: anchors + two PRNG streams
   src/data/productionSeed.ts  BOMs, routes, shelf lives, lines, on-hand
@@ -479,7 +551,7 @@ npm run dev        # one terminal
 node verify.mjs    # another — asserts the anchor rows still hold
 ```
 
-38 checks.
+45 checks.
 
 *Both pages* — that the Item field opens empty, that pressing Run without one
 asks for it instead of guessing, and that the grid stays empty until an item is
@@ -487,10 +559,11 @@ chosen.
 
 *Product cost inquiry* — the three `F440` anchors, that raw material only ever
 lands in site 2 / warehouse 24, the three `FG816` production anchors, that a
-production row traces back to the batch it consumed, that landed cost trends up
-faster than purchase price and a longer horizon projects further along it, that
-the background items return rows across more than one warehouse, and that an
-unknown item errors cleanly.
+production row traces back to the batch it consumed, that the variance panel
+flags out-of-bounds receipts with a direction and decomposes one into named
+causes, that landed cost trends up faster than purchase price and a longer
+horizon projects further along it, that the background items return rows across
+more than one warehouse, and that an unknown item errors cleanly.
 
 *Production cost inquiry* — that the navigation pane routes to it, that the BOM
 lists real component items with the basis each was priced on, that a BOM quantity
@@ -499,10 +572,16 @@ carry **different** costs per unit because they consume different lots, that the
 plan quantifies the material that will expire unconverted, that **enabling the
 co-pack line takes at-risk to zero and raises output**, that a long-shelf-life
 item has nothing at risk, that the variance to the item cost record is reported,
-and that a component drills back through to its receipts.
+that the variance bridge splits the four cost groups and packaging drills down
+to its component lines, that Copilot writes an analysis quoting the item and
+ending in actions, and that a component drills back through to its receipts.
 
-Writes `verify-inquiry.png`, `verify-production.png`, `verify-trend.png` and
-`verify-production-plan.png`.
+*Embedding* — that `?embed=1` removes the Finance and Operations bar with the
+form itself unchanged.
+
+Writes `verify-inquiry.png`, `verify-variance.png`, `verify-production.png`,
+`verify-trend.png`, `verify-production-plan.png`,
+`verify-production-variance.png` and `verify-copilot.png`.
 
 Uses system Edge via `channel: 'msedge'`; the Playwright browser CDN is blocked
 by the corporate proxy.
@@ -524,3 +603,22 @@ BASE_PATH=/product-cost-tracker/ npm run build   # → web/dist
 Keep `VITE_DATA_PROVIDER=mock` for a public static host — the `odata` and
 `service` providers need the proxy, which cannot run on GitHub Pages. Routing is
 hash-based, so no SPA rewrite rules or `404.html` fallback are needed.
+
+### Embedding in Finance and Supply Chain
+
+The workspace is built to be hosted inside a real F&SC environment (iframe or
+website host control on a workspace). Embedded, the app must not draw its own
+dark **Finance and Operations** bar — the host already has one — so the chrome
+is parameterised ([`web/src/lib/embed.ts`](web/src/lib/embed.ts)):
+
+```
+.../index.html?embed=1#/product-cost      per URL, no rebuild — the form to use
+                                          in the workspace configuration
+.../index.html#/product-cost?embed=1      also accepted; latched for the session
+VITE_EMBED=1                              in web/.env, for a build that is only
+                                          ever embedded
+```
+
+Everything below the bar — breadcrumb, caption, action pane, FastTabs, status
+bar — renders unchanged, and cross-page navigation stays available through the
+action pane buttons.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { PAGES, type PageId } from '../../lib/route'
+import { isEmbedded } from '../../lib/embed'
 import {
   IconChevronRight,
   IconHelp,
@@ -13,6 +14,11 @@ import {
 /**
  * The Finance and Operations application frame: dark navigation bar, module
  * breadcrumb, page caption, then the form body on the light canvas.
+ *
+ * When the app is embedded inside a real F&SC workspace (`?embed=1`, or
+ * VITE_EMBED — see lib/embed.ts) the dark bar is omitted entirely: the host
+ * already draws it, and the page starts at the breadcrumb the way a native
+ * form does.
  */
 
 interface AppShellProps {
@@ -44,11 +50,13 @@ export function AppShell({
 
   return (
     <div className="flex h-full min-h-screen flex-col bg-canvas">
-      <NavBar
-        company={company}
-        navOpen={navOpen}
-        onToggleNav={onNavigate ? () => setNavOpen((v) => !v) : undefined}
-      />
+      {isEmbedded ? null : (
+        <NavBar
+          company={company}
+          navOpen={navOpen}
+          onToggleNav={onNavigate ? () => setNavOpen((v) => !v) : undefined}
+        />
+      )}
 
       {navOpen && onNavigate ? (
         <NavPane

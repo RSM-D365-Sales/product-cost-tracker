@@ -230,6 +230,8 @@ export const mockProvider: ProductCostProvider = {
       item: itemInfo,
       bom,
       rollup,
+      // seedRows() is already newest-first; filtering preserves that.
+      actualRuns: rows.filter((r) => r.sourceType === 'Production'),
       onHand,
       lines,
       plan,

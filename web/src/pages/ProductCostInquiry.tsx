@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProductCostResult } from '../types/domain'
 import type { ProductCostProvider } from '../providers/types'
 import { ProviderError } from '../providers/types'
@@ -15,12 +15,14 @@ import { MessageBar } from '../components/d365/MessageBar'
 import {
   IconChart,
   IconClear,
+  IconCopilot,
   IconExcel,
   IconExpand,
   IconFactory,
   IconFilter,
   IconRefresh,
   IconSpinner,
+  IconVariance,
 } from '../components/d365/Icons'
 import { PAGES, type PageId } from '../lib/route'
 
@@ -33,11 +35,15 @@ import {
 import { SummaryPanel } from '../components/SummaryPanel'
 import { CostTrendPanel } from '../components/CostTrendPanel'
 import { ReceiptGrid } from '../components/ReceiptGrid'
+import { LandedVariancePanel } from '../components/LandedVariancePanel'
+import { CopilotPane } from '../components/CopilotPane'
 
-import { money, percent, qty } from '../lib/format'
+import { money, percent, qty, signedPercent } from '../lib/format'
 import { hasOptionalFilters, resolveDateWindow } from '../lib/query'
 import { downloadCsv } from '../lib/export'
 import { deepLinksEnabled } from '../lib/links'
+import { analyseLandedVariance } from '../lib/variance'
+import { purchasingNarrative } from '../lib/copilot'
 
 const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
 
@@ -70,7 +76,25 @@ export function ProductCostInquiry({
   // Starts closed: the grid is the answer to the question that was asked, and
   // the trend is the follow-up question.
   const [showTrend, setShowTrend] = useState(false)
+  // Collapsed rather than absent: the FastTab header always reports how many
+  // receipts sit outside the band, and one click opens the evidence.
+  const [showVariance, setShowVariance] = useState(false)
+  const [tolerancePct, setTolerancePct] = useState(5)
+  const [copilotOpen, setCopilotOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('Product cost inquiry')
+
+  const variance = useMemo(
+    () =>
+      result && result.rows.length > 0
+        ? analyseLandedVariance(result.rows, tolerancePct)
+        : null,
+    [result, tolerancePct],
+  )
+
+  const copilotSections = useMemo(
+    () => (result ? purchasingNarrative(result, variance) : null),
+    [result, variance],
+  )
 
   // Only ever one inquiry in flight; a second Run cancels the first.
   const inflight = useRef<AbortController | null>(null)
@@ -194,6 +218,14 @@ export function ProductCostInquiry({
                 >
                   {showTrend ? 'Hide cost trend' : 'Cost trend'}
                 </ActionButton>
+                <ActionButton
+                  icon={IconVariance}
+                  disabled={!result || result.rows.length === 0}
+                  onClick={() => setShowVariance((v) => !v)}
+                  title="Receipts outside the tolerance band, with the cost components that put them there"
+                >
+                  {showVariance ? 'Hide cost variance' : 'Cost variance'}
+                </ActionButton>
                 {onNavigate ? (
                   <ActionButton
                     icon={IconFactory}
@@ -220,6 +252,18 @@ export function ProductCostInquiry({
                   title="Export the grid to a CSV that Excel opens directly"
                 >
                   Export to Excel
+                </ActionButton>
+              </ActionGroup>
+
+              <ActionDivider />
+
+              <ActionGroup label="Copilot">
+                <ActionButton
+                  icon={IconCopilot}
+                  onClick={() => setCopilotOpen((v) => !v)}
+                  title="A written analysis of the purchasing activity this inquiry returned"
+                >
+                  {copilotOpen ? 'Hide Copilot' : 'Copilot'}
                 </ActionButton>
               </ActionGroup>
             </>
@@ -310,6 +354,42 @@ export function ProductCostInquiry({
           </FastTab>
         ) : null}
 
+        {result && variance ? (
+          <FastTab
+            title="Landed cost variance"
+            expanded={showVariance}
+            onToggle={() => setShowVariance((v) => !v)}
+            badge={
+              <span className="ml-1 border border-stroke bg-[#F3F2F1] px-[6px] py-px text-xs text-ink-secondary">
+                vs quantity-weighted baseline
+              </span>
+            }
+            summary={[
+              {
+                label: 'Baseline',
+                value: money(variance.baseline, variance.currency),
+              },
+              {
+                label: `Outside ±${tolerancePct}%`,
+                value: `${variance.flagged.length} of ${variance.receipts.length}`,
+              },
+              {
+                label: 'Largest',
+                value: variance.flagged[0]
+                  ? signedPercent(variance.flagged[0].variancePct)
+                  : '—',
+              },
+            ]}
+          >
+            <LandedVariancePanel
+              analysis={variance}
+              unit={result.item.unit}
+              tolerancePct={tolerancePct}
+              onToleranceChange={setTolerancePct}
+            />
+          </FastTab>
+        ) : null}
+
         {result && result.rows.length > 0 && showTrend ? (
           <FastTab
             title="Cost trend"
@@ -347,6 +427,17 @@ export function ProductCostInquiry({
           />
         </div>
       </div>
+
+      <CopilotPane
+        open={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        sections={copilotSections}
+        contextLabel={
+          result
+            ? `Analysis of purchasing activity for ${result.item.itemNumber} ${result.item.productName}`
+            : undefined
+        }
+      />
     </AppShell>
   )
 }

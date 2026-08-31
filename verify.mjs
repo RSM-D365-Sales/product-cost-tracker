@@ -131,6 +131,49 @@ check(
 await page.screenshot({ path: 'verify-inquiry.png', fullPage: true })
 console.log('Screenshot written to verify-inquiry.png')
 
+// --- Landed cost variance --------------------------------------------------
+// Collapsed by default with the counts in the header; expanding it must list
+// the out-of-bounds receipts with a direction and the causes that put them
+// there. Two years of freight inflation guarantee flagged rows at ±5%.
+const varianceTab = page
+  .locator('section', { hasText: 'Landed cost variance' })
+  .first()
+await varianceTab.locator('button[aria-expanded]').first().click()
+await page.waitForTimeout(300)
+
+const varianceText = (await varianceTab.innerText()).replace(/\s+/g, ' ')
+check(
+  'variance panel reports baseline and tolerance counts',
+  /Baseline landed cost/.test(varianceText) && /Within tolerance/.test(varianceText),
+  varianceText.slice(0, 160),
+)
+
+const flaggedRows = await varianceTab.locator('table.f-grid tbody tr').count()
+check(
+  'variance grid flags out-of-bounds receipts with a direction',
+  flaggedRows > 0 && /Above|Below/i.test(varianceText),
+  `${flaggedRows} flagged rows`,
+)
+
+// The decomposition must name the causes — this is the "why", not just "how much".
+await varianceTab.locator('button[aria-label="Expand charges"]').first().click()
+await page.waitForTimeout(250)
+const causeText = (await varianceTab.innerText()).replace(/\s+/g, ' ')
+check(
+  'flagged receipt decomposes into named causes',
+  /Variance causes/.test(causeText) &&
+    /Transportation/.test(causeText) &&
+    /Purchase price \(FOB\)/.test(causeText),
+  causeText.match(/Variance causes[^|]{0,120}/)?.[0] ?? '',
+)
+
+await page.screenshot({ path: 'verify-variance.png', fullPage: true })
+console.log('Screenshot written to verify-variance.png')
+
+// Collapse again so the receipts grid is the only grid the anchor checks see.
+await varianceTab.locator('button[aria-expanded]').first().click()
+await page.waitForTimeout(200)
+
 // --- Finished goods --------------------------------------------------------
 // The produced items are reported as finished against production orders, and
 // each run must carry the actual cost of the avocado batch it consumed.
@@ -427,6 +470,53 @@ check(
   rollupText.replace(/\s+/g, ' ').match(/Variance to current cost \S+ \([^)]+\)/)?.[0] ?? '',
 )
 
+// --- Production cost variance ----------------------------------------------
+// The bridge must split calculated-vs-actual across the four cost groups, and
+// each group must drill down to the component or operation lines behind it.
+const prodVarTab = page
+  .locator('section', { hasText: 'Cost variance analysis' })
+  .first()
+await prodVarTab.locator('button[aria-expanded]').first().click()
+await page.waitForTimeout(300)
+const prodVarText = (await prodVarTab.innerText()).replace(/\s+/g, ' ')
+check(
+  'variance bridge splits the four cost groups',
+  ['Material (food)', 'Packaging', 'Labour', 'Overhead', 'Runs outside tolerance'].every(
+    (s) => prodVarText.includes(s),
+  ),
+  prodVarText.slice(0, 200),
+)
+
+await prodVarTab.getByRole('button', { name: 'Expand Packaging' }).click()
+await page.waitForTimeout(250)
+check(
+  'packaging drills down to its component lines',
+  ((await prodVarTab.innerText()).match(/PKG101/g) ?? []).length > 0,
+)
+
+await page.screenshot({ path: 'verify-production-variance.png', fullPage: true })
+console.log('Screenshot written to verify-production-variance.png')
+
+// --- Copilot ----------------------------------------------------------------
+// The written analysis is composed from the same result the grids render, so
+// it must quote the item and end with actions, and carry the caution line.
+await page.getByRole('button', { name: 'Copilot', exact: true }).click()
+await page.waitForTimeout(1400)
+const copilotText = (
+  await page.locator('aside[aria-label="Copilot"]').innerText()
+).replace(/\s+/g, ' ')
+check(
+  'Copilot writes an analysis of the production activity',
+  copilotText.includes('FG841') &&
+    copilotText.includes('Suggested actions') &&
+    /AI-generated content may be incorrect/.test(copilotText),
+  copilotText.slice(0, 160),
+)
+await page.screenshot({ path: 'verify-copilot.png', fullPage: true })
+console.log('Screenshot written to verify-copilot.png')
+await page.getByRole('button', { name: 'Close Copilot' }).click()
+await page.waitForTimeout(200)
+
 // Drilling a component through to its receipts closes the loop between the
 // two pages.
 await page.getByRole('button', { name: 'Component receipts' }).click()
@@ -436,6 +526,17 @@ check(
   (await page.locator('h1').innerText()) === 'Product cost inquiry' &&
     (await page.evaluate(() => location.hash)) === '#/product-cost?item=RAW541',
   await page.evaluate(() => location.hash),
+)
+
+// --- Embedded chrome --------------------------------------------------------
+// ?embed=1 removes the app's own Finance and Operations bar so the workspace
+// can be hosted inside a real F&SC environment; the form must be unchanged.
+await page.goto(`${base}/?embed=1#/product-cost`, { waitUntil: 'networkidle' })
+await page.waitForTimeout(300)
+check(
+  'embed=1 hides the Finance and Operations bar',
+  (await page.getByText('Finance and Operations', { exact: true }).count()) === 0 &&
+    (await page.locator('h1').innerText()) === 'Product cost inquiry',
 )
 
 check('no console/page errors', errors.length === 0, errors.join(' ; '))

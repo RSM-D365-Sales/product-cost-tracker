@@ -185,3 +185,19 @@ export const IconChart = svg(
     <path d="M11.5 5 14 3" strokeDasharray="2 1.6" />
   </>,
 )
+
+/** Opposed arrows about a baseline — cost above, cost below. */
+export const IconVariance = svg(
+  <>
+    <path d="M5 13V3.6M5 3.6 2.8 5.8M5 3.6l2.2 2.2" />
+    <path d="M11 3v9.4M11 12.4l-2.2-2.2M11 12.4l2.2-2.2" />
+  </>,
+)
+
+/** A four-point spark with a companion — the Copilot glyph shorthand. */
+export const IconCopilot = svg(
+  <>
+    <path d="M6.7 2.6c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" />
+    <path d="M12.1 9.7c.3 1.5 1.1 2.3 2.6 2.6-1.5.3-2.3 1.1-2.6 2.6-.3-1.5-1.1-2.3-2.6-2.6 1.5-.3 2.3-1.1 2.6-2.6z" />
+  </>,
+)

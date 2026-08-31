@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProductionCostResult } from '../types/production'
 import type { ProductCostProvider } from '../providers/types'
 import { ProviderError } from '../providers/types'
@@ -16,6 +16,7 @@ import {
   IconBox,
   IconChart,
   IconClear,
+  IconCopilot,
   IconExcel,
   IconExpand,
   IconFilter,
@@ -23,6 +24,7 @@ import {
   IconRefresh,
   IconSpinner,
   IconTree,
+  IconVariance,
 } from '../components/d365/Icons'
 
 import {
@@ -37,10 +39,14 @@ import { BatchOnHandGrid } from '../components/BatchOnHandGrid'
 import { PlanSummaryPanel } from '../components/PlanSummaryPanel'
 import { ProductionPlanGrid } from '../components/ProductionPlanGrid'
 import { CapacityTimeline } from '../components/CapacityTimeline'
+import { ProductionVariancePanel } from '../components/ProductionVariancePanel'
+import { CopilotPane } from '../components/CopilotPane'
 
-import { money, percent, qty } from '../lib/format'
+import { money, percent, qty, signedMoney } from '../lib/format'
 import { downloadPlanCsv } from '../lib/export'
 import { PAGES, type PageId } from '../lib/route'
+import { analyseRunVariance } from '../lib/variance'
+import { productionNarrative } from '../lib/copilot'
 
 const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
 const PAGE = PAGES.find((p) => p.id === 'production-cost')!
@@ -81,10 +87,28 @@ export function ProductionCostInquiry({
   // The BOM is the evidence behind the cost rather than the answer itself, so
   // it starts closed the way an F&O detail FastTab does.
   const [showBom, setShowBom] = useState(false)
+  // Collapsed rather than absent — the header still reports the run count
+  // outside the band, and one click opens the decomposition.
+  const [showVariance, setShowVariance] = useState(false)
+  const [tolerancePct, setTolerancePct] = useState(5)
+  const [copilotOpen, setCopilotOpen] = useState(false)
   const [showBatches, setShowBatches] = useState(true)
   const [showPlan, setShowPlan] = useState(true)
   const [showCapacity, setShowCapacity] = useState(true)
   const [activeTab, setActiveTab] = useState('Production cost inquiry')
+
+  const variance = useMemo(
+    () =>
+      result && result.actualRuns.length > 0
+        ? analyseRunVariance(result.actualRuns, result.rollup, tolerancePct)
+        : null,
+    [result, tolerancePct],
+  )
+
+  const copilotSections = useMemo(
+    () => (result ? productionNarrative(result, variance) : null),
+    [result, variance],
+  )
 
   const inflight = useRef<AbortController | null>(null)
   useEffect(() => () => inflight.current?.abort(), [])
@@ -248,11 +272,29 @@ export function ProductionCostInquiry({
                   Export plan to Excel
                 </ActionButton>
               </ActionGroup>
+
+              <ActionDivider />
+
+              <ActionGroup label="Copilot">
+                <ActionButton
+                  icon={IconCopilot}
+                  onClick={() => setCopilotOpen((v) => !v)}
+                  title="A written analysis of this item's production cost and plan"
+                >
+                  {copilotOpen ? 'Hide Copilot' : 'Copilot'}
+                </ActionButton>
+              </ActionGroup>
             </>
           ) : (
             <ActionGroup label="Show">
               <ActionButton icon={IconTree} onClick={() => setShowBom((v) => !v)}>
                 {showBom ? 'Hide bill of material' : 'Bill of material'}
+              </ActionButton>
+              <ActionButton
+                icon={IconVariance}
+                onClick={() => setShowVariance((v) => !v)}
+              >
+                {showVariance ? 'Hide cost variance' : 'Cost variance'}
               </ActionButton>
               <ActionButton
                 icon={IconBox}
@@ -351,6 +393,40 @@ export function ProductionCostInquiry({
             >
               <CostRollupPanel rollup={result.rollup} unit={result.item.unit} />
             </FastTab>
+
+            {variance ? (
+              <FastTab
+                title="Cost variance analysis"
+                expanded={showVariance}
+                onToggle={() => setShowVariance((v) => !v)}
+                badge={
+                  <span className="ml-1 border border-stroke bg-[#F3F2F1] px-[6px] py-px text-xs text-ink-secondary">
+                    {variance.runs.length} posted runs
+                  </span>
+                }
+                summary={[
+                  {
+                    label: 'Actual vs calculated',
+                    value: signedMoney(
+                      variance.bridgeVariance,
+                      variance.currency,
+                    ),
+                  },
+                  {
+                    label: `Runs outside ±${tolerancePct}%`,
+                    value: `${variance.flagged.length} of ${variance.runs.length}`,
+                  },
+                ]}
+              >
+                <ProductionVariancePanel
+                  analysis={variance}
+                  bom={result.bom}
+                  unit={result.item.unit}
+                  tolerancePct={tolerancePct}
+                  onToleranceChange={setTolerancePct}
+                />
+              </FastTab>
+            ) : null}
 
             <FastTab
               title="Bill of material and route"
@@ -493,6 +569,17 @@ export function ProductionCostInquiry({
           </div>
         )}
       </div>
+
+      <CopilotPane
+        open={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        sections={copilotSections}
+        contextLabel={
+          result
+            ? `Analysis of production activity for ${result.item.itemNumber} ${result.item.productName}`
+            : undefined
+        }
+      />
     </AppShell>
   )
 }

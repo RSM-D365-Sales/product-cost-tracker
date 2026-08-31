@@ -69,6 +69,18 @@ export function percent(fraction: number): string {
 }
 
 /**
+ * Variances carry their sign explicitly — "+$0.22" reads as a direction where
+ * "$0.22" reads as a price. Intl already prefixes the minus.
+ */
+export function signedMoney(value: number, currency = 'USD'): string {
+  return `${value >= 0 ? '+' : ''}${money(value, currency)}`
+}
+
+export function signedPercent(fraction: number): string {
+  return `${fraction >= 0 ? '+' : ''}${percent(fraction)}`
+}
+
+/**
  * F&O renders dates in the user's locale format. Parses the ISO date as local
  * rather than UTC so a receipt dated the 1st never displays as the 31st.
  */

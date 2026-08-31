@@ -4,9 +4,13 @@ dist/
 .env.local
 *.local
 
-# Verification output — except the one the README embeds
+# Verification output — except the ones the README embeds
 verify-*.png
 !verify-inquiry.png
+!verify-trend.png
+!verify-production-plan.png
+!verify-variance.png
+!verify-copilot.png
 
 # Editor / OS
 .vscode/

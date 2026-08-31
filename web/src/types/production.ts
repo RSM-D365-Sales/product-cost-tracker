@@ -18,7 +18,12 @@
  * Money is per unit unless a field name says otherwise, in the item's currency.
  */
 
-import type { ItemInfo, ProviderKind, ReceiptSourceType } from './domain'
+import type {
+  ItemInfo,
+  ProviderKind,
+  ReceiptRow,
+  ReceiptSourceType,
+} from './domain'
 
 /**
  * D365 cost groups. Material and Packaging both come off the BOM; Labour and
@@ -288,6 +293,12 @@ export interface ProductionCostResult {
   item: ItemInfo
   bom: ProductionBom
   rollup: CostRollup
+  /**
+   * The item's posted production receipts — the same rows the product cost
+   * inquiry shows — so the variance analysis can set each actual run against
+   * the calculated cost without a second inquiry. Newest first.
+   */
+  actualRuns: ReceiptRow[]
   /** Every batch-tracked component, plus the finished item itself. */
   onHand: BatchOnHand[]
   /** Lines capable of the item, whether or not the plan used them. */
