@@ -1,9 +1,12 @@
 import type { ProductCostResult } from '../types/domain'
 import type { ProductionCostResult } from '../types/production'
+import type { ImpactInputs } from '../types/netting'
 import type {
   LandedVarianceAnalysis,
   ProductionVarianceAnalysis,
 } from './variance'
+import type { Adjustments, NettingComparison, NettingResult } from './netting'
+import { isNeutral } from './netting'
 import { money, percent, qty, shortDate, signedMoney, signedPercent } from './format'
 import { resolveDateWindow } from './query'
 
@@ -38,9 +41,97 @@ const n = (count: number, singular: string, plural = `${singular}s`): string =>
 // Purchasing activity — the product cost inquiry
 // ---------------------------------------------------------------------------
 
+/** The impact-analysis state, when the item has open POs to simulate against. */
+export interface ImpactNarrativeInput {
+  inputs: ImpactInputs
+  baseline: NettingResult
+  simulated: NettingResult
+  comparison: NettingComparison
+  adjustments: Adjustments
+  /** True when at least one simulated change differs from as-ordered. */
+  active: boolean
+}
+
+/** "PO-000931 moved out 7 days and confirmed 20% short", per adjusted line. */
+function describeChanges(impact: ImpactNarrativeInput): string {
+  const parts: string[] = []
+  for (const s of impact.inputs.supplies) {
+    if (s.kind !== 'Expected') continue
+    const a = impact.adjustments[s.id]
+    if (isNeutral(a)) continue
+    const bits: string[] = []
+    const shift = Math.round(a!.shiftDays)
+    if (shift !== 0) {
+      bits.push(`moved ${shift > 0 ? 'out' : 'in'} ${n(Math.abs(shift), 'day')}`)
+    }
+    if (a!.quantityPct !== 100) {
+      bits.push(
+        a!.quantityPct < 100
+          ? `confirmed ${100 - a!.quantityPct}% short`
+          : `confirmed ${a!.quantityPct - 100}% long`,
+      )
+    }
+    parts.push(`${s.reference} ${bits.join(' and ')}`)
+  }
+  return parts.join('; ')
+}
+
+function impactSection(impact: ImpactNarrativeInput, unit: string): CopilotSection {
+  const { inputs, baseline, simulated, comparison, active } = impact
+  const cur = inputs.supplies[0]?.currency ?? 'USD'
+  const expected = inputs.supplies.filter((s) => s.kind === 'Expected')
+  const inbound = expected.reduce((s, e) => s + e.quantity, 0)
+  const paragraphs: string[] = []
+
+  if (!active) {
+    const covered = baseline.coverage.filter((c) => c.short <= 0).length
+    paragraphs.push(
+      `${n(expected.length, 'open purchase order')} between ${shortDate(expected[0].availableDate)} and ` +
+        `${shortDate(expected[expected.length - 1].availableDate)} add ${qty(inbound)} ${unit} to the supply. ` +
+        `${covered} of ${baseline.coverage.length} downstream planned orders are covered at the confirmed dates and quantities` +
+        (baseline.hasShortfall
+          ? `; ${qty(baseline.shortQuantity)} ${unit} is already short from ${shortDate(baseline.firstShortDate!)}.`
+          : ' — nothing goes short.'),
+    )
+    paragraphs.push(
+      'Simulate a date or quantity change on an open order to see the downstream impact of a vendor change request before accepting it.',
+    )
+    return { heading: 'Impact analysis', paragraphs }
+  }
+
+  const changes = describeChanges(impact)
+  if (comparison.hasImpact) {
+    const first = comparison.newlyShortDemands[0] ?? simulated.shortDemands[0]
+    let verdict =
+      `Has impact — ${changes}. ` +
+      (comparison.newlyShortDemands.length > 0 && first
+        ? `${n(comparison.newlyShortDemands.length, 'downstream order goes', 'downstream orders go')} short, starting with ` +
+          `${first.demand.reference} (${first.demand.description}) short ${qty(first.short)} ${unit} on ` +
+          `${shortDate(first.demand.requiredDate)}.`
+        : '')
+    if (comparison.expiredValueDelta > 1) {
+      verdict += ` ${money(comparison.expiredValueDelta, cur)} of material now expires unconsumed.`
+    }
+    paragraphs.push(verdict.trim())
+  } else {
+    paragraphs.push(
+      `No impact — ${changes}. Every downstream order stays covered at the simulated dates and quantities.`,
+    )
+    if (comparison.endingOnHandDelta > 500) {
+      paragraphs.push(
+        `The change does add ${qty(comparison.endingOnHandDelta)} ${unit} of supply with no demand pegged to it — ` +
+          'stock to sell through or push to a later requirement.',
+      )
+    }
+  }
+
+  return { heading: 'Impact analysis', paragraphs }
+}
+
 export function purchasingNarrative(
   result: ProductCostResult,
   analysis: LandedVarianceAnalysis | null,
+  impact?: ImpactNarrativeInput,
 ): CopilotSection[] {
   const { item, summary, rows, query } = result
   const cur = summary.currency
@@ -175,8 +266,22 @@ export function purchasingNarrative(
     sections.push({ heading: 'Landed cost variance', paragraphs: paras })
   }
 
+  // --- Expected supply and impact analysis ---------------------------------
+  if (impact) {
+    sections.push(impactSection(impact, item.unit))
+  }
+
   // --- Recommendations -----------------------------------------------------
   const bullets: string[] = []
+  if (impact?.active && impact.comparison.hasImpact) {
+    const first =
+      impact.comparison.newlyShortDemands[0] ?? impact.simulated.shortDemands[0]
+    bullets.push(
+      first
+        ? `Before accepting the vendor's change, ask to split the delivery so ${first.demand.reference} keeps its ${shortDate(first.demand.requiredDate)} requirement covered, or move that planned order to match.`
+        : 'Before accepting the vendor’s change, review the expiry exposure it creates in the impact analysis.',
+    )
+  }
   if (costGap > 0.02) {
     bullets.push(
       `Update the item cost record — it trails the receipts by ${percent(Math.abs(costGap))} and is flattering the margin.`,

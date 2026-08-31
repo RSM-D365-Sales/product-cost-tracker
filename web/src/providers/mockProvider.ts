@@ -24,10 +24,12 @@ import {
   SITES,
   WAREHOUSES,
   batchesForItem,
+  expectedRows,
   itemByNumber,
   itemInfoOf,
   seedRows,
 } from '../data/seed'
+import { impactInputsFor } from '../data/nettingSeed'
 import {
   bomSpecFor,
   isBatchTracked,
@@ -68,6 +70,10 @@ function contains(haystack: string | undefined, needle: string): boolean {
   return (haystack ?? '').toLowerCase().includes(needle.trim().toLowerCase())
 }
 
+function eqi(a: string | undefined, b: string): boolean {
+  return (a ?? '').toLowerCase() === b.trim().toLowerCase()
+}
+
 export const mockProvider: ProductCostProvider = {
   kind: 'mock',
   label: 'Demo data (offline)',
@@ -102,11 +108,31 @@ export const mockProvider: ProductCostProvider = {
 
     const itemInfo = itemInfoOf(item)
 
+    // Open PO lines respect the location filters, but not the date window:
+    // daysBack means "recent history", and an expected receipt is by nature
+    // in the future. Only an explicit from/to pair the user typed narrows it.
+    const expected = expectedRows()
+      .filter((r) => r.itemNumber === item.itemNumber)
+      .filter(
+        (r) =>
+          (!query.siteId || eqi(r.siteId, query.siteId)) &&
+          (!query.warehouseId || eqi(r.warehouseId, query.warehouseId)) &&
+          (!query.purchaseOrderNumber ||
+            eqi(r.purchaseOrderNumber, query.purchaseOrderNumber)) &&
+          // Expected rows have no batch or location yet.
+          !query.batchNumber &&
+          !query.locationId &&
+          (!query.fromDate || r.receiptDate >= query.fromDate) &&
+          (!query.toDate || r.receiptDate <= query.toDate),
+      )
+
     return {
       query,
       item: itemInfo,
       summary: summarise(rows, itemInfo),
       rows,
+      expected: expected.length > 0 ? expected : undefined,
+      impact: impactInputsFor(item.itemNumber),
       warnings,
       source: 'mock',
       elapsedMs: Math.round(performance.now() - started),

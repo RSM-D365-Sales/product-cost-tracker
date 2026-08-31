@@ -284,6 +284,44 @@ against its own season.
 
 ---
 
+## Expected receipts and impact analysis
+
+The grid also carries the item's **open purchase orders** — lines confirmed but
+not yet received, marked `EXPECTED`, at the vendor-confirmed price plus
+estimated charges. **Hide expected POs** on the action pane toggles them off.
+They never enter the summary averages, the trend fit, or the variance baseline
+(a cost not yet paid is not a cost you paid) — instead the variance panel
+measures them *against* the posted baseline, which answers "where are the next
+loads expected to land relative to what we've actually been paying".
+
+**Impact analysis** is the FastTab those open POs make possible, modelled on
+the Procurement agent's impact analysis in D365 SCM: supply (unexpired on-hand
+lots plus open POs) netted against the downstream planned production pegged to
+it, expiry-aware and first-expired-first-out. Then simulate the change request
+a vendor actually sends — **a delivery moved out or in (`Shift days`), a
+quantity confirmed short or long (`Quantity %`)** — and the verdict comes back
+the way the agent gives it: **Has impact** or **No impact**, with the named
+downstream orders that go short, the first shortfall date, material that now
+expires unconsumed, and baseline-vs-simulated projected on-hand strips.
+
+![The impact analysis simulating a delivery moved out a week](verify-impact.png)
+
+On `F440`, moving `PO-000931` out 7 days leaves a planned FG816 run short
+42,000 lb with a first shortfall inside the week — and Copilot narrates the
+same simulation ("Has impact — PO-000931 moved out 7 days…") with a suggested
+reply to the vendor.
+
+The netting engine is [`web/src/lib/netting.ts`](web/src/lib/netting.ts), pure
+and re-run on every keystroke of the simulation controls. The demand side
+([`web/src/data/nettingSeed.ts`](web/src/data/nettingSeed.ts)) is *derived, not
+invented*: one planned order per supply lot, sized to the lot and dated shortly
+after it lands (lot-for-lot coverage), which is why the baseline nets clean and
+any adverse change surfaces immediately. It is a single-item, day-granular
+netting — it ignores the site filter the way net requirements do, and it is not
+the production page's capacity plan (that one also knows about line hours).
+
+---
+
 ### Purchase and production in one grid
 
 A produced item has no vendor and no FOB price, but reporting it as finished is
@@ -526,13 +564,15 @@ web/                          Vite + React 18 + TS + Tailwind
   src/lib/calc.ts             Landed cost, margin, charge allocation
   src/lib/production.ts       BOM roll-up, FEFO allocation, capacity scheduling
   src/lib/variance.ts         Out-of-bounds detection + cause decomposition
+  src/lib/netting.ts          Impact analysis: netting, pegging, simulation
   src/lib/copilot.ts          The Copilot narrative, composed from the result
   src/lib/trend.ts            Least-squares fit + prediction interval
   src/lib/route.ts            Hash routing — two pages, no router dependency
   src/lib/embed.ts            ?embed=1 / VITE_EMBED — chrome for F&SC embedding
   src/lib/odataConfig.ts      ← entity + field names live here, nowhere else
-  src/data/seed.ts            Receipts: anchors + two PRNG streams
+  src/data/seed.ts            Receipts: anchors + two PRNG streams + open POs
   src/data/productionSeed.ts  BOMs, routes, shelf lives, lines, on-hand
+  src/data/nettingSeed.ts     Pegged demand, derived lot-for-lot from supply
   src/components/d365/        F&O kit (shell, nav pane, action pane, FastTab, grid)
   src/pages/                  The two inquiries
 server/                       Node proxy: Azure AD auth, OData passthrough, probe
@@ -551,7 +591,7 @@ npm run dev        # one terminal
 node verify.mjs    # another — asserts the anchor rows still hold
 ```
 
-45 checks.
+49 checks.
 
 *Both pages* — that the Item field opens empty, that pressing Run without one
 asks for it instead of guessing, and that the grid stays empty until an item is
@@ -561,9 +601,12 @@ chosen.
 lands in site 2 / warehouse 24, the three `FG816` production anchors, that a
 production row traces back to the batch it consumed, that the variance panel
 flags out-of-bounds receipts with a direction and decomposes one into named
-causes, that landed cost trends up faster than purchase price and a longer
-horizon projects further along it, that the background items return rows across
-more than one warehouse, and that an unknown item errors cleanly.
+causes, that expected PO lines ride along marked `EXPECTED` and toggle off,
+that the impact analysis nets them against pegged demand and **moving a
+delivery out a week goes from Covered to Has impact** with named downstream
+orders short, that landed cost trends up faster than purchase price and a
+longer horizon projects further along it, that the background items return rows
+across more than one warehouse, and that an unknown item errors cleanly.
 
 *Production cost inquiry* — that the navigation pane routes to it, that the BOM
 lists real component items with the basis each was priced on, that a BOM quantity
@@ -579,8 +622,8 @@ ending in actions, and that a component drills back through to its receipts.
 *Embedding* — that `?embed=1` removes the Finance and Operations bar with the
 form itself unchanged.
 
-Writes `verify-inquiry.png`, `verify-variance.png`, `verify-production.png`,
-`verify-trend.png`, `verify-production-plan.png`,
+Writes `verify-inquiry.png`, `verify-variance.png`, `verify-impact.png`,
+`verify-production.png`, `verify-trend.png`, `verify-production-plan.png`,
 `verify-production-variance.png` and `verify-copilot.png`.
 
 Uses system Edge via `channel: 'msedge'`; the Playwright browser CDN is blocked

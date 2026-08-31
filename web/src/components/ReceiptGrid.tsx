@@ -29,6 +29,25 @@ function DrillLink({ value, href }: { value: string; href: string | null }) {
 /** Absent sourceType means a purchase — see ReceiptRow. */
 const isProduction = (r: ReceiptRow): boolean => r.sourceType === 'Production'
 
+/** Absent receiptStatus means posted — see ReceiptRow. */
+export const isExpected = (r: ReceiptRow): boolean =>
+  r.receiptStatus === 'Expected'
+
+/**
+ * Marks an open PO line that has not been received yet. Brand-tinted rather
+ * than a status colour: an expected receipt is a state, not a problem.
+ */
+export function ExpectedPill() {
+  return (
+    <span
+      className="inline-flex border border-brand/40 bg-brand-tint px-[6px] py-px text-2xs font-semibold uppercase tracking-wide text-brand"
+      title="Open purchase order line — not yet received. Quantity is ordered, price is vendor-confirmed, charges are estimates."
+    >
+      Expected
+    </span>
+  )
+}
+
 function marginTone(fraction: number): string {
   if (fraction >= 0.3) return 'text-status-good'
   if (fraction >= 0.15) return 'text-status-warn'
@@ -70,15 +89,18 @@ export function ReceiptGrid({
         key: 'receipt',
         header: 'Receipt number',
         headerTitle:
-          'Product receipt for purchases, report-as-finished journal for production',
+          'Product receipt for purchases, report-as-finished journal for production. Expected rows have none yet.',
         width: '120px',
-        sortValue: (r) => r.receiptNumber,
-        render: (r) => (
-          <DrillLink
-            value={r.receiptNumber}
-            href={isProduction(r) ? null : productReceiptLink(r.receiptNumber)}
-          />
-        ),
+        sortValue: (r) => (isExpected(r) ? '~expected' : r.receiptNumber),
+        render: (r) =>
+          isExpected(r) ? (
+            <ExpectedPill />
+          ) : (
+            <DrillLink
+              value={r.receiptNumber}
+              href={isProduction(r) ? null : productReceiptLink(r.receiptNumber)}
+            />
+          ),
       },
       {
         key: 'item',
@@ -95,9 +117,20 @@ export function ReceiptGrid({
       {
         key: 'date',
         header: 'Receipt date',
+        headerTitle: 'Posted date; the confirmed delivery date for expected rows',
         width: '105px',
         sortValue: (r) => r.receiptDate,
-        render: (r) => shortDate(r.receiptDate),
+        render: (r) =>
+          isExpected(r) ? (
+            <span
+              className="text-ink-secondary"
+              title="Confirmed delivery date — not yet received"
+            >
+              {shortDate(r.receiptDate)}
+            </span>
+          ) : (
+            shortDate(r.receiptDate)
+          ),
       },
       {
         key: 'vendor',

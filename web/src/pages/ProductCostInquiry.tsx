@@ -15,11 +15,13 @@ import { MessageBar } from '../components/d365/MessageBar'
 import {
   IconChart,
   IconClear,
+  IconClock,
   IconCopilot,
   IconExcel,
   IconExpand,
   IconFactory,
   IconFilter,
+  IconGrid,
   IconRefresh,
   IconSpinner,
   IconVariance,
@@ -36,6 +38,7 @@ import { SummaryPanel } from '../components/SummaryPanel'
 import { CostTrendPanel } from '../components/CostTrendPanel'
 import { ReceiptGrid } from '../components/ReceiptGrid'
 import { LandedVariancePanel } from '../components/LandedVariancePanel'
+import { ImpactAnalysisPanel } from '../components/ImpactAnalysisPanel'
 import { CopilotPane } from '../components/CopilotPane'
 
 import { money, percent, qty, signedPercent } from '../lib/format'
@@ -43,6 +46,13 @@ import { hasOptionalFilters, resolveDateWindow } from '../lib/query'
 import { downloadCsv } from '../lib/export'
 import { deepLinksEnabled } from '../lib/links'
 import { analyseLandedVariance } from '../lib/variance'
+import {
+  compareNetting,
+  hasActiveAdjustments,
+  runNetting,
+  type Adjustments,
+  type SupplyAdjustment,
+} from '../lib/netting'
 import { purchasingNarrative } from '../lib/copilot'
 
 const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
@@ -73,6 +83,8 @@ export function ProductCostInquiry({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showParams, setShowParams] = useState(true)
   const [showSummary, setShowSummary] = useState(true)
+  // Expanded by default — the grid is the answer the inquiry was run for.
+  const [showReceipts, setShowReceipts] = useState(true)
   // Starts closed: the grid is the answer to the question that was asked, and
   // the trend is the follow-up question.
   const [showTrend, setShowTrend] = useState(false)
@@ -81,19 +93,78 @@ export function ProductCostInquiry({
   const [showVariance, setShowVariance] = useState(false)
   const [tolerancePct, setTolerancePct] = useState(5)
   const [copilotOpen, setCopilotOpen] = useState(false)
+  // Open PO lines not yet received, shown amongst the receipts by default —
+  // the toggle is for reading history without the pipeline in the way.
+  const [includeExpected, setIncludeExpected] = useState(true)
+  const [showImpact, setShowImpact] = useState(false)
+  // Simulated vendor change requests, keyed by expected supply id. Cleared on
+  // every run: a simulation belongs to the result it was built against.
+  const [adjustments, setAdjustments] = useState<Adjustments>({})
   const [activeTab, setActiveTab] = useState('Product cost inquiry')
+
+  // What the grid shows: expected lines first (they are the future), then the
+  // posted receipts. Summary and trend stay posted-only by construction.
+  const combinedRows = useMemo(() => {
+    if (!result) return []
+    return includeExpected && result.expected
+      ? [...result.expected, ...result.rows]
+      : result.rows
+  }, [result, includeExpected])
 
   const variance = useMemo(
     () =>
-      result && result.rows.length > 0
-        ? analyseLandedVariance(result.rows, tolerancePct)
+      combinedRows.length > 0
+        ? analyseLandedVariance(combinedRows, tolerancePct)
         : null,
-    [result, tolerancePct],
+    [combinedRows, tolerancePct],
   )
 
+  const impact = result?.impact
+  const baselineNetting = useMemo(
+    () => (impact ? runNetting(impact, {}) : null),
+    [impact],
+  )
+  const simulatedNetting = useMemo(
+    () => (impact ? runNetting(impact, adjustments) : null),
+    [impact, adjustments],
+  )
+  const comparison = useMemo(
+    () =>
+      baselineNetting && simulatedNetting
+        ? compareNetting(baselineNetting, simulatedNetting)
+        : null,
+    [baselineNetting, simulatedNetting],
+  )
+  const simulationActive = hasActiveAdjustments(adjustments)
+
   const copilotSections = useMemo(
-    () => (result ? purchasingNarrative(result, variance) : null),
-    [result, variance],
+    () =>
+      result
+        ? purchasingNarrative(
+            result,
+            variance,
+            impact && baselineNetting && simulatedNetting && comparison
+              ? {
+                  inputs: impact,
+                  baseline: baselineNetting,
+                  simulated: simulatedNetting,
+                  comparison,
+                  adjustments,
+                  active: simulationActive,
+                }
+              : undefined,
+          )
+        : null,
+    [
+      result,
+      variance,
+      impact,
+      baselineNetting,
+      simulatedNetting,
+      comparison,
+      adjustments,
+      simulationActive,
+    ],
   )
 
   // Only ever one inquiry in flight; a second Run cancels the first.
@@ -123,6 +194,7 @@ export function ProductCostInquiry({
       if (ctrl.signal.aborted) return
       setResult(res)
       setSelectedId(res.rows[0]?.id ?? null)
+      setAdjustments({})
       // Collapse the parameters block once there are results to look at, the
       // way F&O inquiry forms hand the screen over to the grid.
       if (res.rows.length > 0) setShowParams(false)
@@ -148,9 +220,16 @@ export function ProductCostInquiry({
     setResult(null)
     setError(null)
     setSelectedId(null)
+    setAdjustments({})
     setShowParams(true)
     setLoading(false)
   }
+
+  const adjust = useCallback(
+    (supplyId: string, adjustment: SupplyAdjustment) =>
+      setAdjustments((prev) => ({ ...prev, [supplyId]: adjustment })),
+    [],
+  )
 
   const summary = result?.summary
   const window = resolveDateWindow(toQuery(form))
@@ -226,6 +305,14 @@ export function ProductCostInquiry({
                 >
                   {showVariance ? 'Hide cost variance' : 'Cost variance'}
                 </ActionButton>
+                <ActionButton
+                  icon={IconClock}
+                  disabled={!result?.expected}
+                  onClick={() => setIncludeExpected((v) => !v)}
+                  title="Open purchase order lines not yet received: confirmed delivery dates, ordered quantities, and where their cost is expected to land"
+                >
+                  {includeExpected ? 'Hide expected POs' : 'Show expected POs'}
+                </ActionButton>
                 {onNavigate ? (
                   <ActionButton
                     icon={IconFactory}
@@ -274,6 +361,12 @@ export function ProductCostInquiry({
                 onClick={() => setShowSummary((v) => !v)}
               >
                 {showSummary ? 'Hide summary' : 'Show summary'}
+              </ActionButton>
+              <ActionButton
+                icon={IconGrid}
+                onClick={() => setShowReceipts((v) => !v)}
+              >
+                {showReceipts ? 'Hide receipts' : 'Show receipts'}
               </ActionButton>
             </ActionGroup>
           )}
@@ -405,27 +498,102 @@ export function ProductCostInquiry({
           </FastTab>
         ) : null}
 
-        <div>
-          <div className="mb-1 flex items-baseline gap-2 px-[2px]">
-            <h2 className="text-md font-semibold text-ink">Product receipts</h2>
-            {result ? (
-              <span className="text-sm text-ink-secondary">
-                {result.rows.length}{' '}
-                {result.rows.length === 1 ? 'line' : 'lines'}
-                {deepLinksEnabled
-                  ? ' · select an order or receipt number to open it in Finance and Operations'
-                  : ' · expand a row to see the charge breakdown'}
+        {result && impact && baselineNetting && simulatedNetting && comparison ? (
+          <FastTab
+            title="Impact analysis"
+            expanded={showImpact}
+            onToggle={() => setShowImpact((v) => !v)}
+            badge={
+              <span className="ml-1 border border-stroke bg-[#F3F2F1] px-[6px] py-px text-xs text-ink-secondary">
+                expected supply vs pegged demand
               </span>
-            ) : null}
-          </div>
+            }
+            summary={[
+              {
+                label: 'Open POs',
+                value: qty(
+                  impact.supplies.filter((s) => s.kind === 'Expected').length,
+                ),
+              },
+              {
+                label: 'Downstream orders',
+                value: qty(impact.demands.length),
+              },
+              {
+                label: 'Status',
+                value: simulationActive
+                  ? comparison.hasImpact
+                    ? 'Has impact'
+                    : 'No impact'
+                  : baselineNetting.hasShortfall
+                    ? 'Short'
+                    : 'Covered',
+              },
+            ]}
+          >
+            <ImpactAnalysisPanel
+              inputs={impact}
+              baseline={baselineNetting}
+              simulated={simulatedNetting}
+              comparison={comparison}
+              adjustments={adjustments}
+              active={simulationActive}
+              onAdjust={adjust}
+              onReset={() => setAdjustments({})}
+            />
+          </FastTab>
+        ) : null}
 
+        <FastTab
+          title="Product receipts"
+          expanded={showReceipts}
+          onToggle={() => setShowReceipts((v) => !v)}
+          badge={
+            result ? (
+              <span className="ml-1 border border-stroke bg-[#F3F2F1] px-[6px] py-px text-xs text-ink-secondary">
+                {combinedRows.length}{' '}
+                {combinedRows.length === 1 ? 'line' : 'lines'}
+                {includeExpected && result.expected
+                  ? ` · ${result.expected.length} expected`
+                  : ''}
+              </span>
+            ) : undefined
+          }
+          summary={
+            result
+              ? [
+                  {
+                    label: 'Quantity received',
+                    value: `${qty(result.summary.totalQuantity)} ${result.item.unit}`,
+                  },
+                  {
+                    label: 'Avg. landed',
+                    value: money(
+                      result.summary.averageLandedCost,
+                      result.summary.currency,
+                    ),
+                  },
+                ]
+              : undefined
+          }
+        >
+          {result ? (
+            <p className="mb-1 px-[2px] text-sm text-ink-secondary">
+              {deepLinksEnabled
+                ? 'Select an order or receipt number to open it in Finance and Operations.'
+                : 'Expand a row to see the charge breakdown.'}
+              {includeExpected && result.expected
+                ? ' Expected rows are open purchase orders — not yet received, priced at vendor-confirmed prices with estimated charges.'
+                : ''}
+            </p>
+          ) : null}
           <ReceiptGrid
-            rows={result?.rows ?? []}
+            rows={combinedRows}
             loading={loading}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
-        </div>
+        </FastTab>
       </div>
 
       <CopilotPane

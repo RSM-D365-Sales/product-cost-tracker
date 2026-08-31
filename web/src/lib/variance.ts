@@ -139,7 +139,11 @@ export interface LandedVarianceAnalysis {
   currency: string
   /** Tolerance band, as a percentage (5 means ±5%). */
   tolerancePct: number
-  /** Quantity-weighted average landed cost of the result. */
+  /**
+   * Quantity-weighted average landed cost of the POSTED receipts. Expected
+   * rows are measured against it but never move it — a cost not yet paid is
+   * not part of what things actually cost.
+   */
   baseline: number
   /** Label for the FOB/material slot, e.g. "Purchase price (FOB)". */
   priceCauseLabel: string
@@ -149,6 +153,9 @@ export interface LandedVarianceAnalysis {
   flagged: ReceiptVariance[]
   aboveCount: number
   belowCount: number
+  /** How many of `receipts` are posted vs expected (open PO lines). */
+  postedCount: number
+  expectedCount: number
   /** Cause labels present in the result, canonical order (price first). */
   causeLabels: { key: string; label: string }[]
 }
@@ -192,10 +199,17 @@ export function analyseLandedVariance(
   if (rows.length === 0) return null
 
   const currency = rows[0].currency
-  const totalQty = rows.reduce((s, r) => s + r.quantityReceived, 0)
+
+  // The baseline basis is the posted rows only. When somehow handed nothing
+  // but expected rows, they become their own basis rather than measuring
+  // everything against zero.
+  const posted = rows.filter((r) => r.receiptStatus !== 'Expected')
+  const basis = posted.length > 0 ? posted : rows
+
+  const basisQty = basis.reduce((s, r) => s + r.quantityReceived, 0)
   // Weighted mean; simple mean when the quantities are somehow all zero.
   const weight = (r: ReceiptRow) =>
-    totalQty !== 0 ? r.quantityReceived / totalQty : 1 / rows.length
+    basisQty !== 0 ? r.quantityReceived / basisQty : 1 / basis.length
 
   const allProduction = rows.every((r) => r.sourceType === 'Production')
   const anyProduction = rows.some((r) => r.sourceType === 'Production')
@@ -205,8 +219,13 @@ export function analyseLandedVariance(
       ? 'Purchase price / material'
       : 'Purchase price (FOB)'
 
-  // Union of causes across the result, with extended totals for the baseline.
-  // A receipt that avoided a charge others paid gets a favourable delta for it.
+  const perRow = rows.map((row) => rowCauses(row))
+  const basisIndex = new Set(basis.map((r) => r.id))
+
+  // Union of causes across ALL rows (so an estimate-only charge on an open PO
+  // still gets a line), with extended totals over the BASIS rows only for the
+  // baseline. A receipt that avoided a charge others paid gets a favourable
+  // delta for it.
   const accumulators = new Map<string, CauseAccumulator>()
   accumulators.set(PRICE_CAUSE_KEY, {
     key: PRICE_CAUSE_KEY,
@@ -214,26 +233,28 @@ export function analyseLandedVariance(
     extended: 0,
   })
 
-  const perRow = rows.map((row) => rowCauses(row))
-
   rows.forEach((row, i) => {
+    const inBasis = basisIndex.has(row.id)
     for (const [key, { label, amount }] of perRow[i]) {
       let acc = accumulators.get(key)
       if (!acc) {
         acc = { key, label, extended: 0 }
         accumulators.set(key, acc)
       }
-      acc.extended += amount * row.quantityReceived
+      if (inBasis) acc.extended += amount * row.quantityReceived
     }
   })
 
   const baselineOf = (key: string): number => {
     const acc = accumulators.get(key)
     if (!acc) return 0
-    if (totalQty !== 0) return acc.extended / totalQty
-    // All-zero quantities: fall back to a simple mean of the per-row amounts.
+    if (basisQty !== 0) return acc.extended / basisQty
+    // All-zero quantities: fall back to a simple mean over the basis rows.
     return (
-      perRow.reduce((s, m) => s + (m.get(key)?.amount ?? 0), 0) / rows.length
+      basis.reduce((s, r) => {
+        const i = rows.indexOf(r)
+        return s + (perRow[i]?.get(key)?.amount ?? 0)
+      }, 0) / basis.length
     )
   }
 
@@ -244,7 +265,7 @@ export function analyseLandedVariance(
     return baselineOf(b.key) - baselineOf(a.key)
   })
 
-  const baseline = rows.reduce((s, r) => s + r.landedCost * weight(r), 0)
+  const baseline = basis.reduce((s, r) => s + r.landedCost * weight(r), 0)
   const tolerance = tolerancePct / 100
 
   const receipts: ReceiptVariance[] = rows.map((row, i) => {
@@ -286,6 +307,8 @@ export function analyseLandedVariance(
     flagged,
     aboveCount: flagged.filter((r) => r.direction === 'above').length,
     belowCount: flagged.filter((r) => r.direction === 'below').length,
+    postedCount: posted.length,
+    expectedCount: rows.length - posted.length,
     causeLabels: ordered.map(({ key, label }) => ({ key, label })),
   }
 }

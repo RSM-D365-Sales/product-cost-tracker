@@ -174,6 +174,61 @@ console.log('Screenshot written to verify-variance.png')
 await varianceTab.locator('button[aria-expanded]').first().click()
 await page.waitForTimeout(200)
 
+// --- Expected receipts ------------------------------------------------------
+// Open PO lines not yet received ride along in the grid, marked EXPECTED, and
+// toggle off so history can be read without the pipeline in the way.
+const receiptsSection = page
+  .locator('section', { hasText: 'Product receipts' })
+  .first()
+check(
+  'expected PO lines appear amongst the receipts',
+  (await receiptsSection.locator('tbody tr', { hasText: 'PO-000920' }).count()) >
+    0 && /expected/i.test(await receiptsSection.innerText()),
+)
+
+await page.getByRole('button', { name: 'Hide expected POs' }).click()
+await page.waitForTimeout(200)
+check(
+  'expected POs toggle off',
+  (await receiptsSection.locator('tbody tr', { hasText: 'PO-000920' }).count()) ===
+    0,
+)
+await page.getByRole('button', { name: 'Show expected POs' }).click()
+await page.waitForTimeout(200)
+
+// --- Impact analysis --------------------------------------------------------
+// Net requirements with pegging, and the procurement-agent simulation: moving
+// a confirmed delivery out must put named downstream orders at risk.
+const impactTab = page.locator('section', { hasText: 'Impact analysis' }).first()
+await impactTab.locator('button[aria-expanded]').first().click()
+await page.waitForTimeout(300)
+const impactText = (await impactTab.innerText()).replace(/\s+/g, ' ')
+check(
+  'impact analysis nets open POs against pegged demand',
+  /PP-000\d+/.test(impactText) &&
+    /Downstream orders covered/.test(impactText) &&
+    /PO-000931/.test(impactText),
+  impactText.slice(0, 160),
+)
+
+await page.getByLabel('Shift PO-000931 by days').fill('7')
+await page.waitForTimeout(300)
+const simText = (await impactTab.innerText()).replace(/\s+/g, ' ')
+check(
+  'moving a PO out has impact on downstream orders',
+  /has impact/i.test(simText) && /Impacted downstream orders/.test(simText),
+  simText.match(/First shortfall[^A-Z]*/)?.[0] ?? simText.slice(0, 160),
+)
+
+await page.screenshot({ path: 'verify-impact.png', fullPage: true })
+console.log('Screenshot written to verify-impact.png')
+
+await page.getByRole('button', { name: 'Reset simulation' }).click()
+await page.waitForTimeout(200)
+// Collapse so later grid-wide checks only ever see the receipts grid.
+await impactTab.locator('button[aria-expanded]').first().click()
+await page.waitForTimeout(200)
+
 // --- Finished goods --------------------------------------------------------
 // The produced items are reported as finished against production orders, and
 // each run must carry the actual cost of the avocado batch it consumed.

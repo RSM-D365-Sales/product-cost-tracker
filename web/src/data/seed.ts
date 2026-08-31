@@ -1191,6 +1191,168 @@ export function explicitOnHand(): Map<string, number> {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Expected receipts — open purchase orders not yet received
+// ---------------------------------------------------------------------------
+
+/**
+ * Open PO lines for the two focus raw materials, dated relative to TODAY so
+ * the pipeline always stretches into the future. Vendor-confirmed FOB prices
+ * on the same gentle upward drift as the posted receipts; charges are per-unit
+ * ESTIMATES (accruals), because nothing has been invoiced yet.
+ *
+ * These are deliberately NOT part of seedRows(): an expected receipt is not a
+ * posted one, and folding them in would move the summary averages, the trend
+ * fit and the variance baseline that the demo script quotes. They surface only
+ * through `expectedRows()` and the provider's `expected` result field, and
+ * they are the supply side the impact analysis simulates against.
+ *
+ * PO numbers sit in the 920–949 range: above the inbound anchors (900–918),
+ * below both generated ranges.
+ */
+const EXPECTED_ORDERS: {
+  item: string
+  po: string
+  /** Confirmed delivery, days after today. */
+  daysOut: number
+  qty: number
+  fob: number
+  /** Per unit, estimated. */
+  charges: [string, number][]
+}[] = [
+  // --- F440 Bulk Avocados: one load roughly every six days -----------------
+  {
+    item: 'F440',
+    po: 'PO-000920',
+    daysOut: 5,
+    qty: 40_000,
+    fob: 2.44,
+    charges: [
+      ['FREIGHT', 0.25],
+      ['PRECOOL', 0.07],
+      ['BROKER', 0.026],
+      ['DUTY', 0.044],
+    ],
+  },
+  {
+    item: 'F440',
+    po: 'PO-000926',
+    daysOut: 11,
+    qty: 44_000,
+    fob: 2.47,
+    charges: [
+      ['FREIGHT', 0.26],
+      ['PRECOOL', 0.072],
+      ['BROKER', 0.026],
+      ['DUTY', 0.045],
+    ],
+  },
+  {
+    item: 'F440',
+    po: 'PO-000931',
+    daysOut: 17,
+    qty: 42_000,
+    fob: 2.46,
+    charges: [
+      ['FREIGHT', 0.265],
+      ['PRECOOL', 0.073],
+      ['BROKER', 0.027],
+      ['DUTY', 0.045],
+    ],
+  },
+  {
+    item: 'F440',
+    po: 'PO-000938',
+    daysOut: 24,
+    qty: 46_000,
+    fob: 2.5,
+    charges: [
+      ['FREIGHT', 0.27],
+      ['PRECOOL', 0.074],
+      ['BROKER', 0.027],
+      ['DUTY', 0.046],
+    ],
+  },
+  // --- RAW541 Raw Black Beans: two bulk loads ------------------------------
+  {
+    item: 'RAW541',
+    po: 'PO-000944',
+    daysOut: 9,
+    qty: 100_000,
+    fob: 0.67,
+    charges: [
+      ['FREIGHT', 0.09],
+      ['FUMIG', 0.022],
+      ['PALLET', 0.013],
+      ['INSPECT', 0.012],
+    ],
+  },
+  {
+    item: 'RAW541',
+    po: 'PO-000949',
+    daysOut: 21,
+    qty: 120_000,
+    fob: 0.69,
+    charges: [
+      ['FREIGHT', 0.092],
+      ['FUMIG', 0.022],
+      ['PALLET', 0.013],
+      ['INSPECT', 0.013],
+    ],
+  },
+]
+
+let expectedCache: { asOf: string; rows: ReceiptRow[] } | null = null
+
+/**
+ * Open PO lines as receipt-shaped rows, soonest delivery first. No receipt
+ * number and no batch — neither exists until the goods arrive.
+ */
+export function expectedRows(today: string = todayIso()): ReceiptRow[] {
+  if (expectedCache?.asOf === today) return expectedCache.rows
+
+  const rows = EXPECTED_ORDERS.map((e) => {
+    const item = itemByNumber(e.item)!
+    const charges: ChargeLine[] = e.charges.map(([code, perUnit]) => {
+      const spec = chargeSpec(code)
+      return {
+        chargeCode: spec.code,
+        description: `${spec.description} (estimated)`,
+        chargeType: 'Financial' as const,
+        source: 'Header' as const,
+        allocationMethod: spec.allocationMethod,
+        amount: round(perUnit * e.qty),
+        amountPerUnit: perUnit,
+      }
+    })
+
+    return costRow({
+      id: `${e.po}|expected|1`,
+      sourceType: 'Purchase',
+      receiptStatus: 'Expected',
+      purchaseOrderNumber: e.po,
+      purchaseLineNumber: 1,
+      receiptNumber: '',
+      receiptDate: addDaysIso(today, e.daysOut),
+      itemNumber: item.itemNumber,
+      productName: item.productName,
+      vendorAccount: 'R1002',
+      vendorName: 'Davis Enterprises',
+      siteId: '2',
+      warehouseId: '24',
+      quantityReceived: e.qty,
+      unit: item.unit,
+      currency: item.currency,
+      purchasePriceFob: e.fob,
+      sellingPrice: item.sellingPrice,
+      charges,
+    })
+  }).sort((a, b) => (a.receiptDate < b.receiptDate ? -1 : 1))
+
+  expectedCache = { asOf: today, rows }
+  return rows
+}
+
 function buildProductionAnchors(): ReceiptRow[] {
   return PRODUCTION_ANCHORS.map((a) => {
     const item = itemByNumber(a.item)!

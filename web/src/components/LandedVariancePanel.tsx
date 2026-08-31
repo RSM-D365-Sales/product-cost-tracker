@@ -6,6 +6,7 @@ import type {
   VarianceDirection,
 } from '../lib/variance'
 import { Grid, type Column } from './d365/Grid'
+import { ExpectedPill, isExpected } from './ReceiptGrid'
 import { money, qty, shortDate, signedMoney, signedPercent } from '../lib/format'
 
 /**
@@ -263,8 +264,10 @@ export function LandedVariancePanel({
         key: 'receipt',
         header: 'Receipt number',
         width: '115px',
-        sortValue: (v) => v.row.receiptNumber,
-        render: (v) => v.row.receiptNumber,
+        sortValue: (v) =>
+          isExpected(v.row) ? '~expected' : v.row.receiptNumber,
+        render: (v) =>
+          isExpected(v.row) ? <ExpectedPill /> : v.row.receiptNumber,
       },
       {
         key: 'date',
@@ -358,9 +361,13 @@ export function LandedVariancePanel({
       <div className="flex flex-wrap items-end gap-4">
         <p className="min-w-[260px] max-w-[860px] flex-1 text-base text-ink-secondary">
           Each receipt is measured against the quantity-weighted average landed
-          cost of this result. A receipt outside the tolerance band is listed
-          below with the cost components that put it there — the direction on
-          each cause is what tells you whether to call the carrier or the buyer.
+          cost of the posted receipts in this result
+          {analysis.expectedCount > 0
+            ? ' — expected receipts are measured against it too, but never move it'
+            : ''}
+          . A receipt outside the tolerance band is listed below with the cost
+          components that put it there — the direction on each cause is what
+          tells you whether to call the carrier or the buyer.
         </p>
         <ToleranceField
           tolerancePct={tolerancePct}

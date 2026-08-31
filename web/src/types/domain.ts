@@ -67,6 +67,20 @@ export interface ChargeLine {
  */
 export type ReceiptSourceType = 'Purchase' | 'Production'
 
+/**
+ * Whether the goods have actually arrived. `Expected` rows are open purchase
+ * order lines not yet product-receipted: the quantity is ordered-not-received,
+ * the receipt date is the confirmed delivery date, the price is the
+ * vendor-confirmed price and the charges are estimates — which is exactly what
+ * makes them worth putting on the same grid: they say where the next receipts
+ * are EXPECTED to land against where the posted ones actually did.
+ *
+ * Absent means 'Posted'. Expected rows never enter the summary averages, the
+ * trend fit, or the variance baseline — a cost you have not yet paid is not a
+ * cost you paid — they are only measured against them.
+ */
+export type ReceiptStatus = 'Posted' | 'Expected'
+
 /** One product receipt line, fully costed. This is a row in the main grid. */
 export interface ReceiptRow {
   /** Stable synthetic key: `${purchaseOrderNumber}|${receiptNumber}|${purchaseLineNumber}`. */
@@ -74,6 +88,9 @@ export interface ReceiptRow {
 
   /** Defaults to 'Purchase' when absent. */
   sourceType?: ReceiptSourceType
+
+  /** Defaults to 'Posted' when absent. See ReceiptStatus. */
+  receiptStatus?: ReceiptStatus
 
   /** Purchase order number, or the production order number when produced. */
   purchaseOrderNumber: string
@@ -194,6 +211,18 @@ export interface ProductCostResult {
   item: ItemInfo
   summary: ProductCostSummary
   rows: ReceiptRow[]
+  /**
+   * Open purchase order lines not yet received (`receiptStatus: 'Expected'`),
+   * newest expected date first. Kept apart from `rows` so the summary, trend
+   * and variance baseline stay posted-actuals-only; the page decides whether
+   * to show them in the grid. Absent when the provider has none.
+   */
+  expected?: ReceiptRow[]
+  /**
+   * Supply and pegged downstream demand for the impact analysis, when the
+   * item has expected receipts to simulate against. See types/netting.ts.
+   */
+  impact?: import('./netting').ImpactInputs
   /** Non-fatal notes, e.g. "3 header charges could not be allocated". */
   warnings: string[]
   source: ProviderKind
