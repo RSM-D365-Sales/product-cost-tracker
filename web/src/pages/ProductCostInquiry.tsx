@@ -41,7 +41,7 @@ import { LandedVariancePanel } from '../components/LandedVariancePanel'
 import { ImpactAnalysisPanel } from '../components/ImpactAnalysisPanel'
 import { CopilotPane } from '../components/CopilotPane'
 
-import { money, percent, qty, signedPercent } from '../lib/format'
+import { money, percent, qty, shortDate, signedPercent } from '../lib/format'
 import { hasOptionalFilters, resolveDateWindow } from '../lib/query'
 import { downloadCsv } from '../lib/export'
 import { deepLinksEnabled } from '../lib/links'
@@ -85,8 +85,9 @@ export function ProductCostInquiry({
   const [showSummary, setShowSummary] = useState(true)
   // Expanded by default — the grid is the answer the inquiry was run for.
   const [showReceipts, setShowReceipts] = useState(true)
-  // Starts closed: the grid is the answer to the question that was asked, and
-  // the trend is the follow-up question.
+  // Collapsed rather than absent, like the other analysis FastTabs: the grid
+  // is the answer to the question that was asked, the trend is the follow-up —
+  // but its header stays on the page so everything can be opened side by side.
   const [showTrend, setShowTrend] = useState(false)
   // Collapsed rather than absent: the FastTab header always reports how many
   // receipts sit outside the band, and one click opens the evidence.
@@ -483,7 +484,7 @@ export function ProductCostInquiry({
           </FastTab>
         ) : null}
 
-        {result && result.rows.length > 0 && showTrend ? (
+        {result && result.rows.length > 0 ? (
           <FastTab
             title="Cost trend"
             expanded={showTrend}
@@ -493,6 +494,15 @@ export function ProductCostInquiry({
                 {result.item.itemNumber} · per {result.item.unit}
               </span>
             }
+            summary={[
+              { label: 'Receipts', value: qty(result.rows.length) },
+              {
+                label: 'Window',
+                value: `${shortDate(
+                  result.rows[result.rows.length - 1].receiptDate,
+                )} → ${shortDate(result.rows[0].receiptDate)}`,
+              },
+            ]}
           >
             <CostTrendPanel result={result} />
           </FastTab>
