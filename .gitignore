@@ -13,6 +13,9 @@ verify-*.png
 !verify-impact.png
 !verify-copilot.png
 
+# Generated Fabric seed extracts — regenerate with: npx tsx fabric/exportSeed.ts
+fabric/out/
+
 # Editor / OS
 .vscode/
 .idea/

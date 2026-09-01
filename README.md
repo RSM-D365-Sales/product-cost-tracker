@@ -577,6 +577,8 @@ web/                          Vite + React 18 + TS + Tailwind
   src/pages/                  The two inquiries
 server/                       Node proxy: Azure AD auth, OData passthrough, probe
 dynamics/                     X++ service + data contracts
+fabric/                       Fabric lakehouse starter: seed → F&O-shaped bronze
+                              CSVs + a notebook for silver/gold (see fabric/README.md)
 verify.mjs                    Renders the app in Edge and asserts the numbers
 ```
 
