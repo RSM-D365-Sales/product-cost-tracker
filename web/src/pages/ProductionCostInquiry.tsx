@@ -197,6 +197,20 @@ export function ProductionCostInquiry({
       statusBar={
         <StatusBar result={result} loading={loading} provider={provider} />
       }
+      aside={
+        copilotOpen ? (
+          <CopilotPane
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            sections={copilotSections}
+            contextLabel={
+              result
+                ? `Analysis of production activity for ${result.item.itemNumber} ${result.item.productName}`
+                : undefined
+            }
+          />
+        ) : null
+      }
     >
       <div className="space-y-2">
         <ActionPane
@@ -569,17 +583,6 @@ export function ProductionCostInquiry({
           </div>
         )}
       </div>
-
-      <CopilotPane
-        open={copilotOpen}
-        onClose={() => setCopilotOpen(false)}
-        sections={copilotSections}
-        contextLabel={
-          result
-            ? `Analysis of production activity for ${result.item.itemNumber} ${result.item.productName}`
-            : undefined
-        }
-      />
     </AppShell>
   )
 }

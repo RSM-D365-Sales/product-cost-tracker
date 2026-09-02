@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { CopilotSection } from '../lib/copilot'
-import { isEmbedded } from '../lib/embed'
 import { IconClear, IconCopilot } from './d365/Icons'
 
 /**
- * The Copilot sidecar, styled after the F&SC one: a fixed pane on the right
+ * The Copilot sidecar, styled after the F&SC one: a pane docked to the right
  * with the spark glyph, a generated analysis in short titled sections, and the
  * standard caution line in the footer.
+ *
+ * Docked, not overlaid: it renders into AppShell's `aside` slot, so opening it
+ * RESIZES the form next to it — the grid stays fully scrollable and nothing on
+ * the page is covered, which is how the real F&SC sidecar behaves.
  *
  * The "generation" is deterministic — lib/copilot.ts composes the sections
  * from the same result object the grids render — but the pane still takes a
@@ -46,10 +49,7 @@ export function CopilotPane({
     <aside
       role="complementary"
       aria-label="Copilot"
-      className={[
-        'fixed bottom-0 right-0 z-40 flex w-[380px] max-w-[94vw] flex-col border-l border-stroke bg-surface shadow-flyout',
-        isEmbedded ? 'top-0' : 'top-[42px]',
-      ].join(' ')}
+      className="flex min-h-0 w-[380px] max-w-[50vw] shrink-0 flex-col border-l border-stroke bg-surface shadow-flyout"
     >
       <header className="flex items-center gap-2 border-b border-stroke px-3 py-[9px]">
         <IconCopilot className="h-[18px] w-[18px] text-brand" />

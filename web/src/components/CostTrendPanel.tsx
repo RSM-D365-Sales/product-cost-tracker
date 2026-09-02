@@ -70,7 +70,19 @@ interface SeriesStat {
   quality?: FitQuality
 }
 
-export function CostTrendPanel({ result }: { result: ProductCostResult }) {
+export function CostTrendPanel({
+  result,
+  expected,
+}: {
+  result: ProductCostResult
+  /**
+   * Open PO lines to plot as hollow marks at their confirmed delivery dates.
+   * The page passes them only while "Show expected POs" is on, so the chart
+   * and the grid always agree on whether the pipeline is in view. They never
+   * enter the fit or the stats below it.
+   */
+  expected?: ReceiptRow[]
+}) {
   const [horizonDays, setHorizonDays] = useState(182)
   const [visible, setVisible] = useState<Record<SeriesKey, boolean>>({
     landed: true,
@@ -172,11 +184,22 @@ export function CostTrendPanel({ result }: { result: ProductCostResult }) {
               {s.label}
             </label>
           ))}
+          {expected && expected.length > 0 ? (
+            <span className="flex items-center gap-[6px] text-sm text-ink-secondary">
+              <span
+                aria-hidden="true"
+                className="h-[9px] w-[9px] rounded-full border-2 border-ink-secondary bg-surface"
+              />
+              {expected.length} expected{' '}
+              {expected.length === 1 ? 'PO' : 'POs'} — hollow marks
+            </span>
+          ) : null}
         </div>
       </div>
 
       <CostTrendChart
         rows={rows}
+        expected={expected}
         currency={item.currency}
         unit={item.unit}
         horizonDays={horizonDays}
@@ -257,6 +280,15 @@ export function CostTrendPanel({ result }: { result: ProductCostResult }) {
           the further out you go, the less the past constrains it. Unlike the
           Summary block, the fit is unweighted: each receipt counts as one
           negotiated price regardless of load size.
+        </p>
+      ) : null}
+
+      {expected && expected.length > 0 ? (
+        <p className="mt-2 text-xs text-ink-secondary">
+          Hollow marks are open purchase orders at their confirmed delivery
+          dates — vendor-confirmed prices plus estimated charges. They are
+          plotted for context and never enter the fit or the statistics above:
+          a cost not yet paid is not part of the trend.
         </p>
       ) : null}
     </div>

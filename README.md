@@ -51,10 +51,16 @@ batch it consumed rather than a standard.
 | `FG816`  | AVOCADO 40 4CT         | ea   | Produced — 2.5 lb of `F440` per pack         |
 | `FG841`  | Canned Black Beans     | cs   | Produced — 6 lb of `RAW541` per case of 24   |
 
-Raw material arrives on purchase orders from vendor **R1002 Davis Enterprises**
-and is received into **site 2, warehouse 24**. Finished goods are reported as
-finished against production orders into warehouse 26, with about a fifth of the
-volume packed at the site 3 co-packer.
+Raw material is received into **site 2, warehouse 24**. **R1002 Davis
+Enterprises** is the lead broker and carries every anchor receipt; `RAW541` is
+deliberately **dual-sourced** on top of that — Davis ships the cheap 18-day
+rail pipeline, while **R1024 Rio Grande Commodities** trucks domestic stock in
+5 days at roughly a 7% premium (the `sourcing` mix on the catalogue entry, with
+quoted lead times on the vendor records). The premium shows up in the vendor
+column, the variance flags and Copilot's vendor-mix section: same beans,
+different pipeline, and the price difference is the price of speed. Finished
+goods are reported as finished against production orders into warehouse 26,
+with about a fifth of the volume packed at the site 3 co-packer.
 
 Ten hand-authored **anchor rows** carry the demo script and never move:
 
@@ -218,6 +224,12 @@ apart from `calc.ts`:
   approximation is meaningfully too narrow and would overstate confidence.
 - **A fit of two points is refused.** Two points always fit perfectly and would
   report an r² of 1.
+- **Open POs are plotted, never fitted.** While "Show expected POs" is on, the
+  item's open purchase order lines appear as **hollow marks** at their
+  confirmed delivery dates — vendor-confirmed prices plus estimated charges —
+  so the next loads can be read against the projection they will land inside.
+  They stay out of the fit and the statistics: a cost not yet paid is not a
+  trend that has been measured.
 
 ### Honesty about the projection
 
@@ -288,11 +300,15 @@ against its own season.
 
 The grid also carries the item's **open purchase orders** — lines confirmed but
 not yet received, marked `EXPECTED`, at the vendor-confirmed price plus
-estimated charges. **Hide expected POs** on the action pane toggles them off.
-They never enter the summary averages, the trend fit, or the variance baseline
-(a cost not yet paid is not a cost you paid) — instead the variance panel
-measures them *against* the posted baseline, which answers "where are the next
-loads expected to land relative to what we've actually been paying".
+estimated charges. **Hide expected POs** on the action pane toggles them off,
+in the grid and on the trend chart together. They never enter the summary
+averages, the trend fit, or the variance baseline (a cost not yet paid is not a
+cost you paid) — instead the trend chart plots them as hollow marks in the
+future region and the variance panel measures them *against* the posted
+baseline, which answers "where are the next loads expected to land relative to
+what we've actually been paying". On `RAW541`, `PO-000946` is the one to point
+at: a Rio Grande spot load landing in 4 days at a FOB ~7% over the Davis loads
+either side of it.
 
 **Impact analysis** is the FastTab those open POs make possible, modelled on
 the Procurement agent's impact analysis in D365 SCM: supply (unexpired on-hand
@@ -461,8 +477,16 @@ in [`web/src/lib/odataConfig.ts`](web/src/lib/odataConfig.ts). Run this page on
 
 **Copilot** on either action pane opens an F&SC-style sidecar that writes an
 analysis of the activity the inquiry just returned — scope, cost position,
-what moved outside tolerance and in which direction, material exposure, and
-suggested actions — for whatever item, site and date window is on the screen.
+vendor mix (share of volume, average landed cost and quoted lead time per
+vendor, with the dearer-but-faster trade-off called out when the data actually
+supports it), what moved outside tolerance and in which direction, material
+exposure, and suggested actions — for whatever item, site and date window is on
+the screen.
+
+The pane **docks rather than overlays**: opening it resizes the form beside it,
+the way the real F&SC sidecar does, so the grid stays fully visible and
+scrollable while the analysis is up. While it is open the form keeps its own
+scrollbar and the pane hugs the right edge at full height.
 
 ![The Copilot pane over the production cost inquiry](verify-copilot.png)
 

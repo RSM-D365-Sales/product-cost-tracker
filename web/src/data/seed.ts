@@ -76,6 +76,17 @@ export interface CatalogItem extends ItemInfo {
    * scenario. More than one and the order picks between them.
    */
   receiving?: { siteId: string; warehouseId: string }[]
+  /**
+   * Deliberate multi-sourcing. When set, generated orders that the volume draw
+   * does not give the lead vendor are funnelled to these named alternates
+   * instead of scattering across the whole vendor list, and an alternate's
+   * `priceFactor` scales the prices on its single-commodity loads — that is
+   * how "shorter lead time but dearer" becomes visible in the receipts rather
+   * than staying master-data trivia. The funnelling is a pure remap that
+   * consumes no PRNG draws, so no other item's generated figures move.
+   * Quoted lead times live on the vendor records.
+   */
+  sourcing?: { vendorId: string; priceFactor: number }[]
   /** Raw material consumed, and how much of it per finished unit. */
   bom?: { itemNumber: string; quantityPer: number }
   /** Conversion cost components picked up by a production order. */
@@ -135,6 +146,12 @@ export const FOCUS_ITEMS: CatalogItem[] = [
     priceDriftPerYear: 0.07,
     // Dry beans move on the autumn harvest, and far less than produce does.
     seasonality: { amplitude: 0.03, peakMonth: 8 },
+    // Deliberately dual-sourced: Davis brokers the cheap 18-day rail pipeline
+    // and keeps the lead-vendor share; every non-Davis load is a Rio Grande
+    // truck — domestic stock in 5 days at roughly a 7% premium. The premium
+    // surfaces in the vendor column, the variance flags and the Copilot
+    // vendor-mix section; the lead times sit on the vendor records.
+    sourcing: [{ vendorId: 'R1024', priceFactor: 1.07 }],
   },
   {
     itemNumber: 'FG816',
@@ -572,21 +589,26 @@ export const ITEMS: CatalogItem[] = [...FOCUS_ITEMS, ...FILLER_ITEMS]
  * R1002 Davis Enterprises is the primary supplier for both focus raw materials
  * and carries every anchor receipt; the rest exist so the vendor column varies
  * and the purchase-order lookup returns more than one name.
+ *
+ * `leadTimeDays` is the vendor's quoted order-to-dock lead time. RAW541 is the
+ * item that makes it interesting: Davis is cheapest but ships on an 18-day
+ * pipeline, Rio Grande charges ~7% more and delivers in 5 — see the `sourcing`
+ * mix on the RAW541 catalogue entry.
  */
 export const VENDORS = [
-  { id: 'R1002', name: 'Davis Enterprises' },
-  { id: 'R1017', name: 'Valle Verde Produce' },
-  { id: 'R1024', name: 'Rio Grande Commodities' },
-  { id: 'R1038', name: 'Harvest Ridge Growers' },
+  { id: 'R1002', name: 'Davis Enterprises', leadTimeDays: 18 },
+  { id: 'R1017', name: 'Valle Verde Produce', leadTimeDays: 12 },
+  { id: 'R1024', name: 'Rio Grande Commodities', leadTimeDays: 5 },
+  { id: 'R1038', name: 'Harvest Ridge Growers', leadTimeDays: 9 },
 ]
 
 /** Suppliers used only by the background items. */
 export const FILLER_VENDORS = [
-  { id: 'R1044', name: 'Delta Grain and Pulse' },
-  { id: 'R1051', name: 'Mediterranean Oils SA' },
-  { id: 'R1063', name: 'Atlantic Can and Closure' },
-  { id: 'R1078', name: 'Summit Fibre Packaging' },
-  { id: 'R1085', name: 'Casa Especias Trading' },
+  { id: 'R1044', name: 'Delta Grain and Pulse', leadTimeDays: 11 },
+  { id: 'R1051', name: 'Mediterranean Oils SA', leadTimeDays: 32 },
+  { id: 'R1063', name: 'Atlantic Can and Closure', leadTimeDays: 21 },
+  { id: 'R1078', name: 'Summit Fibre Packaging', leadTimeDays: 8 },
+  { id: 'R1085', name: 'Casa Especias Trading', leadTimeDays: 26 },
 ]
 
 export const SITES = [
@@ -1213,6 +1235,8 @@ export function explicitOnHand(): Map<string, number> {
 const EXPECTED_ORDERS: {
   item: string
   po: string
+  /** Vendor account. Defaults to the lead broker R1002 Davis Enterprises. */
+  vendorId?: string
   /** Confirmed delivery, days after today. */
   daysOut: number
   qty: number
@@ -1273,7 +1297,24 @@ const EXPECTED_ORDERS: {
       ['DUTY', 0.046],
     ],
   },
-  // --- RAW541 Raw Black Beans: two bulk loads ------------------------------
+  // --- RAW541 Raw Black Beans: two broker loads and one spot top-up --------
+  // PO-000946 is the dual-sourcing story in one row: Rio Grande delivers in
+  // 4 days at a fob ~7% over the Davis loads either side of it. Same beans,
+  // different pipeline — the premium is the price of speed.
+  {
+    item: 'RAW541',
+    po: 'PO-000946',
+    vendorId: 'R1024',
+    daysOut: 4,
+    qty: 60_000,
+    fob: 0.74,
+    charges: [
+      ['FREIGHT', 0.085],
+      ['FUMIG', 0.021],
+      ['PALLET', 0.013],
+      ['INSPECT', 0.012],
+    ],
+  },
   {
     item: 'RAW541',
     po: 'PO-000944',
@@ -1313,6 +1354,7 @@ export function expectedRows(today: string = todayIso()): ReceiptRow[] {
 
   const rows = EXPECTED_ORDERS.map((e) => {
     const item = itemByNumber(e.item)!
+    const vendor = VENDORS.find((v) => v.id === e.vendorId) ?? VENDORS[0]
     const charges: ChargeLine[] = e.charges.map(([code, perUnit]) => {
       const spec = chargeSpec(code)
       return {
@@ -1336,8 +1378,8 @@ export function expectedRows(today: string = todayIso()): ReceiptRow[] {
       receiptDate: addDaysIso(today, e.daysOut),
       itemNumber: item.itemNumber,
       productName: item.productName,
-      vendorAccount: 'R1002',
-      vendorName: 'Davis Enterprises',
+      vendorAccount: vendor.id,
+      vendorName: vendor.name,
       siteId: '2',
       warehouseId: '24',
       quantityReceived: e.qty,
@@ -1430,8 +1472,21 @@ function buildPurchaseOrder(
   years: number,
 ): ReceiptRow[] {
   // The lead vendor carries most of the volume.
-  const vendor =
+  const drawn =
     rnd() < 0.68 ? vendors[0] : vendors[1 + Math.floor(rnd() * (vendors.length - 1))]
+
+  // An item with a sourcing mix funnels its non-lead volume to the mix's named
+  // alternates instead of scattering it across the whole vendor list — every
+  // non-Davis load of RAW541 is a Rio Grande truck, not whichever broker the
+  // draw happened to land on. The funnelling is a pure remap: it consumes no
+  // PRNG draws and changes no dates, quantities or draw-derived prices, so no
+  // other item's generated figures move (verify.mjs holds either way).
+  let vendor = drawn
+  if (primary.sourcing?.length && drawn.id !== vendors[0].id) {
+    const alt =
+      primary.sourcing.find((s) => s.vendorId === drawn.id) ?? primary.sourcing[0]
+    vendor = vendors.find((v) => v.id === alt.vendorId) ?? drawn
+  }
 
   const month = Number(receiptDate.slice(5, 7))
 
@@ -1472,6 +1527,23 @@ function buildPurchaseOrder(
     if (others.length === 1) lines.push(mkLine(others[0]))
     else if (others.length > 1) {
       lines.push(mkLine(others[Math.floor(rnd() * others.length)]))
+    }
+  }
+
+  // An alternate vendor's premium applies to its dedicated single-commodity
+  // loads; a mixed load is a brokered consolidation at broker terms. Keeping
+  // the factor off mixed orders also keeps every rider line another item
+  // contributed — and the header charges allocated across it — exactly as the
+  // draws made them, so the premium cannot leak into other items' figures.
+  const premium =
+    primary.sourcing?.find((s) => s.vendorId === vendor.id)?.priceFactor ?? 1
+  if (
+    premium !== 1 &&
+    lines.every((l) => l.item.itemNumber === primary.itemNumber)
+  ) {
+    for (const l of lines) {
+      l.price = round(l.price * premium)
+      l.netAmount = l.quantity * l.price
     }
   }
 

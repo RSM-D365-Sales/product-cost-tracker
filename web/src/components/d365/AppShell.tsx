@@ -31,6 +31,14 @@ interface AppShellProps {
   captionAside?: ReactNode
   children: ReactNode
   statusBar?: ReactNode
+  /**
+   * A docked right-hand sidecar — the Copilot pane. When present, the frame
+   * switches to a fixed-height layout: the content column keeps its own
+   * scrollbar and the sidecar hugs the right edge at full height, so the form
+   * RESIZES next to it instead of being covered by an overlay. Pass null when
+   * the sidecar is closed and the page scrolls normally again.
+   */
+  aside?: ReactNode
   /** Highlighted in the navigation pane. */
   activePageId?: PageId
   onNavigate?: (pageId: PageId) => void
@@ -43,13 +51,21 @@ export function AppShell({
   captionAside,
   children,
   statusBar,
+  aside,
   activePageId,
   onNavigate,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false)
+  const docked = aside !== null && aside !== undefined && aside !== false
 
   return (
-    <div className="flex h-full min-h-screen flex-col bg-canvas">
+    <div
+      className={
+        docked
+          ? 'flex h-screen flex-col overflow-hidden bg-canvas'
+          : 'flex h-full min-h-screen flex-col bg-canvas'
+      }
+    >
       {isEmbedded ? null : (
         <NavBar
           company={company}
@@ -69,27 +85,33 @@ export function AppShell({
         />
       ) : null}
 
-      <div className="flex-1">
-        <div className="mx-auto w-full max-w-[1600px] px-4 pb-8 pt-3">
-          <div className="mb-1 flex items-center gap-2 text-sm text-ink-secondary">
-            <span>{moduleTrail}</span>
-          </div>
+      <div className={docked ? 'flex min-h-0 flex-1' : 'flex-1'}>
+        <div className={docked ? 'min-w-0 flex-1 overflow-y-auto' : undefined}>
+          <div className="mx-auto w-full max-w-[1600px] px-4 pb-8 pt-3">
+            <div className="mb-1 flex items-center gap-2 text-sm text-ink-secondary">
+              <span>{moduleTrail}</span>
+            </div>
 
-          <div className="mb-3 flex items-start gap-2">
-            <h1 className="text-xl font-semibold leading-7 text-ink">{title}</h1>
-            <button
-              type="button"
-              className="f-btn-icon mt-[2px]"
-              title="Add to favorites"
-              aria-label="Add to favorites"
-            >
-              <IconStar className="h-4 w-4" />
-            </button>
-            <div className="ml-auto">{captionAside}</div>
-          </div>
+            <div className="mb-3 flex items-start gap-2">
+              <h1 className="text-xl font-semibold leading-7 text-ink">
+                {title}
+              </h1>
+              <button
+                type="button"
+                className="f-btn-icon mt-[2px]"
+                title="Add to favorites"
+                aria-label="Add to favorites"
+              >
+                <IconStar className="h-4 w-4" />
+              </button>
+              <div className="ml-auto">{captionAside}</div>
+            </div>
 
-          {children}
+            {children}
+          </div>
         </div>
+
+        {aside}
       </div>
 
       {statusBar ? (

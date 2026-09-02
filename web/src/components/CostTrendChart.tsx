@@ -106,17 +106,26 @@ interface Plotted {
   color: string
   pick: (r: ReceiptRow) => number
   points: { t: number; y: number; row: ReceiptRow }[]
+  /** Open PO lines, drawn hollow at their confirmed delivery dates. */
+  expectedPoints: { t: number; y: number; row: ReceiptRow }[]
   fit: TrendFit | null
 }
 
 export function CostTrendChart({
   rows,
+  expected,
   currency,
   unit,
   horizonDays,
   visible,
 }: {
   rows: ReceiptRow[]
+  /**
+   * Open purchase orders not yet received. Plotted as hollow marks at their
+   * confirmed delivery dates — visible context, but NEVER part of the fit: a
+   * cost not yet paid is not a trend that has been measured.
+   */
+  expected?: ReceiptRow[]
   currency: string
   unit: string
   /** Days past the last receipt to project. Zero draws history only. */
@@ -144,29 +153,45 @@ export function CostTrendChart({
     const dated = rows
       .map((row) => ({ t: dayNumber(row.receiptDate), row }))
       .sort((a, b) => a.t - b.t)
+    const expDated = (expected ?? [])
+      .map((row) => ({ t: dayNumber(row.receiptDate), row }))
+      .sort((a, b) => a.t - b.t)
 
     const series: Plotted[] = SERIES.filter((s) => visible[s.key]).map((s) => {
       const points = dated.map(({ t, row }) => ({ t, y: s.pick(row), row }))
-      return { ...s, points, fit: fitTrend(points) }
+      const expectedPoints = expDated.map(({ t, row }) => ({
+        t,
+        y: s.pick(row),
+        row,
+      }))
+      // fitTrend sees the posted points only, by construction.
+      return { ...s, points, expectedPoints, fit: fitTrend(points) }
     })
 
     if (dated.length === 0) return null
 
     const firstT = dated[0].t
     const lastT = dated[dated.length - 1].t
-    const endT = lastT + horizonDays
+    // The fit is only ever projected `horizonDays` past the last POSTED
+    // receipt; the x-domain must additionally reach the furthest confirmed
+    // delivery, so open POs stay on the plot even with the horizon off.
+    const projT = lastT + horizonDays
+    const endT = Math.max(
+      projT,
+      expDated.length > 0 ? expDated[expDated.length - 1].t : projT,
+    )
 
     // The y-domain has to hold the projection band too, or the forecast runs
     // off the top of the plot exactly when it matters most.
     let lo = Infinity
     let hi = -Infinity
     for (const s of series) {
-      for (const p of s.points) {
+      for (const p of [...s.points, ...s.expectedPoints]) {
         lo = Math.min(lo, p.y)
         hi = Math.max(hi, p.y)
       }
       if (s.fit && horizonDays > 0) {
-        const band = predictionInterval(s.fit, endT)
+        const band = predictionInterval(s.fit, projT)
         lo = Math.min(lo, band.lo)
         hi = Math.max(hi, band.hi)
       }
@@ -180,8 +205,8 @@ export function CostTrendChart({
     lo = Math.max(0, lo - headroom)
     hi += headroom
 
-    return { dated, series, firstT, lastT, endT, lo, hi }
-  }, [rows, horizonDays, visible])
+    return { dated, expDated, series, firstT, lastT, projT, endT, lo, hi }
+  }, [rows, expected, horizonDays, visible])
 
   if (!model) {
     return (
@@ -191,7 +216,7 @@ export function CostTrendChart({
     )
   }
 
-  const { dated, series, firstT, lastT, endT, lo, hi } = model
+  const { dated, expDated, series, firstT, lastT, projT, endT, lo, hi } = model
 
   const plotW = width - PAD.left - PAD.right
   const plotH = HEIGHT - PAD.top - PAD.bottom
@@ -203,8 +228,11 @@ export function CostTrendChart({
   const yTicks = niceTicks(lo, hi)
   const xTicks = monthTicks(firstT, endT)
 
-  // One entry per distinct receipt date — what the crosshair snaps to.
-  const dates = [...new Set(dated.map((d) => d.t))].sort((a, b) => a - b)
+  // One entry per distinct date, expected deliveries included — what the
+  // crosshair snaps to.
+  const dates = [
+    ...new Set([...dated, ...expDated].map((d) => d.t)),
+  ].sort((a, b) => a - b)
 
   const snap = (clientX: number) => {
     const el = wrapRef.current
@@ -228,7 +256,7 @@ export function CostTrendChart({
 
   const activeRows = activeT === null
     ? []
-    : dated.filter((d) => d.t === activeT).map((d) => d.row)
+    : [...dated, ...expDated].filter((d) => d.t === activeT).map((d) => d.row)
 
   const forecastOn = horizonDays > 0
 
@@ -238,9 +266,11 @@ export function CostTrendChart({
         width={width}
         height={HEIGHT}
         role="img"
-        aria-label={`Cost per ${unit} over time for ${dated.length} receipts, with fitted trend${
-          forecastOn ? ' and projection' : ''
-        }`}
+        aria-label={`Cost per ${unit} over time for ${dated.length} receipts${
+          expDated.length > 0
+            ? ` and ${expDated.length} open purchase orders`
+            : ''
+        }, with fitted trend${forecastOn ? ' and projection' : ''}`}
         tabIndex={0}
         className="block outline-none focus-visible:ring-1 focus-visible:ring-brand"
         onPointerMove={(e) => snap(e.clientX)}
@@ -257,9 +287,11 @@ export function CostTrendChart({
           }
         }}
       >
-        {/* Projection region — a wash rather than a dashed grid, so the only
-            dashed thing on the chart is the projected line itself. */}
-        {forecastOn ? (
+        {/* Future region — everything past the last posted receipt, whether
+            that is the projection, the open POs, or both. A wash rather than a
+            dashed grid, so the only dashed thing on the chart is the projected
+            line itself. */}
+        {endT > lastT ? (
           <>
             <rect
               x={x(lastT)}
@@ -274,7 +306,7 @@ export function CostTrendChart({
               fontSize={11}
               fill={INK_MUTED}
             >
-              Projected
+              {forecastOn ? 'Projected' : 'Expected'}
             </text>
           </>
         ) : null}
@@ -335,7 +367,7 @@ export function CostTrendChart({
               const top: string[] = []
               const bottom: string[] = []
               for (let i = 0; i <= steps; i++) {
-                const t = lastT + ((endT - lastT) * i) / steps
+                const t = lastT + ((projT - lastT) * i) / steps
                 const band = predictionInterval(s.fit, t)
                 top.push(`${x(t)},${y(band.hi)}`)
                 bottom.push(`${x(t)},${y(band.lo)}`)
@@ -368,8 +400,8 @@ export function CostTrendChart({
                 <line
                   x1={x(lastT)}
                   y1={y(predictAt(s.fit, lastT))}
-                  x2={x(endT)}
-                  y2={y(predictAt(s.fit, endT))}
+                  x2={x(projT)}
+                  y2={y(predictAt(s.fit, projT))}
                   stroke={s.color}
                   strokeWidth={2}
                   strokeDasharray="5 4"
@@ -399,18 +431,38 @@ export function CostTrendChart({
           </g>
         ))}
 
+        {/* Open POs, hollow: the outline says "confirmed, not yet real" the
+            same way the Expected pill does in the grid. Series identity stays
+            on the outline colour; the shape carries the status. */}
+        {series.map((s) => (
+          <g key={`exp-${s.key}`}>
+            {s.expectedPoints.map((p, i) => (
+              <circle
+                key={i}
+                cx={x(p.t)}
+                cy={y(p.y)}
+                r={4}
+                fill={SURFACE}
+                stroke={s.color}
+                strokeWidth={2}
+                opacity={activeT === null || activeT === p.t ? 1 : 0.45}
+              />
+            ))}
+          </g>
+        ))}
+
         {/* Direct-label only the primary series' projected endpoint. The other
             projections are in the stats row below, which cannot collide. */}
         {forecastOn && series[0]?.fit ? (
           <text
-            x={x(endT) + 8}
-            y={y(predictAt(series[0].fit, endT)) + 4}
+            x={x(projT) + 8}
+            y={y(predictAt(series[0].fit, projT)) + 4}
             fontSize={12}
             fontWeight={600}
             fill={INK}
             style={{ fontVariantNumeric: 'tabular-nums' }}
           >
-            {money(predictAt(series[0].fit, endT), currency)}
+            {money(predictAt(series[0].fit, projT), currency)}
           </text>
         ) : null}
 
@@ -463,6 +515,7 @@ function Tooltip({
   // Flip to the left of the crosshair when it would run off the right edge.
   const flip = left > width - 240
   const row = rows[0]
+  const isExpected = row.receiptStatus === 'Expected'
 
   return (
     <div
@@ -470,8 +523,13 @@ function Tooltip({
       style={flip ? { right: width - left + 10 } : { left: left + 10 }}
       role="status"
     >
-      <div className="text-sm font-semibold text-ink">
+      <div className="flex items-baseline gap-2 text-sm font-semibold text-ink">
         {shortDate(row.receiptDate)}
+        {isExpected ? (
+          <span className="border border-brand/40 bg-brand-tint px-[5px] py-px text-2xs font-semibold uppercase tracking-wide text-brand">
+            Expected
+          </span>
+        ) : null}
       </div>
       <div className="mb-1 truncate text-xs text-ink-secondary">
         {row.purchaseOrderNumber}
@@ -494,7 +552,7 @@ function Tooltip({
       ))}
 
       <div className="mt-1 border-t border-stroke-subtle pt-1 text-xs text-ink-secondary">
-        Charges{' '}
+        Charges{isExpected ? ' (estimated)' : ''}{' '}
         <span className="font-semibold tabular-nums text-ink">
           {money(row.financialChargesAoc, currency)}
         </span>{' '}

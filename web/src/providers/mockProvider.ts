@@ -19,9 +19,11 @@ import {
 } from '../lib/production'
 import { todayIso } from '../lib/format'
 import {
+  FILLER_VENDORS,
   FOCUS_ITEMS,
   ITEMS,
   SITES,
+  VENDORS,
   WAREHOUSES,
   batchesForItem,
   expectedRows,
@@ -126,12 +128,27 @@ export const mockProvider: ProductCostProvider = {
           (!query.toDate || r.receiptDate <= query.toDate),
       )
 
+    // Vendor master detail for whoever shows up in the result — the quoted
+    // lead times are what the Copilot vendor-mix narrative trades off against
+    // the landed cost by vendor.
+    const accounts = new Set(
+      [...rows, ...expected].map((r) => r.vendorAccount).filter(Boolean),
+    )
+    const vendors = [...VENDORS, ...FILLER_VENDORS]
+      .filter((v) => accounts.has(v.id))
+      .map((v) => ({
+        vendorAccount: v.id,
+        vendorName: v.name,
+        leadTimeDays: v.leadTimeDays,
+      }))
+
     return {
       query,
       item: itemInfo,
       summary: summarise(rows, itemInfo),
       rows,
       expected: expected.length > 0 ? expected : undefined,
+      vendors: vendors.length > 0 ? vendors : undefined,
       impact: impactInputsFor(item.itemNumber),
       warnings,
       source: 'mock',

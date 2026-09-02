@@ -250,6 +250,20 @@ export function ProductCostInquiry({
           provider={provider}
         />
       }
+      aside={
+        copilotOpen ? (
+          <CopilotPane
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            sections={copilotSections}
+            contextLabel={
+              result
+                ? `Analysis of purchasing activity for ${result.item.itemNumber} ${result.item.productName}`
+                : undefined
+            }
+          />
+        ) : null
+      }
     >
       <div className="space-y-2">
         <ActionPane
@@ -504,7 +518,10 @@ export function ProductCostInquiry({
               },
             ]}
           >
-            <CostTrendPanel result={result} />
+            <CostTrendPanel
+              result={result}
+              expected={includeExpected ? result.expected : undefined}
+            />
           </FastTab>
         ) : null}
 
@@ -605,17 +622,6 @@ export function ProductCostInquiry({
           />
         </FastTab>
       </div>
-
-      <CopilotPane
-        open={copilotOpen}
-        onClose={() => setCopilotOpen(false)}
-        sections={copilotSections}
-        contextLabel={
-          result
-            ? `Analysis of purchasing activity for ${result.item.itemNumber} ${result.item.productName}`
-            : undefined
-        }
-      />
     </AppShell>
   )
 }

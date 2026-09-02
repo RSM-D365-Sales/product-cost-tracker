@@ -239,6 +239,86 @@ export function purchasingNarrative(
     }
   }
 
+  // --- Vendor mix -----------------------------------------------------------
+  // Only worth a section when the item is actually multi-sourced. Share and
+  // averages come straight off the rows; the quoted lead time comes off the
+  // vendor master when the provider carried it. The comparison runs on the
+  // PURCHASE price, not landed — FOB is the number the vendor actually
+  // negotiates, where landed also carries lane and consolidation charges that
+  // are not the vendor's doing. The trade-off sentence is guarded: it is only
+  // written when one vendor is meaningfully dearer AND meaningfully faster, so
+  // scatter between vendors never gets dressed up as a sourcing strategy.
+  const purchaseRows = rows.filter(
+    (r) => r.sourceType !== 'Production' && r.vendorAccount,
+  )
+  if (vendors.size >= 2) {
+    const byVendor = new Map<
+      string,
+      { name: string; qty: number; fob: number; landed: number; count: number }
+    >()
+    for (const r of purchaseRows) {
+      const v = byVendor.get(r.vendorAccount) ?? {
+        name: r.vendorName,
+        qty: 0,
+        fob: 0,
+        landed: 0,
+        count: 0,
+      }
+      v.qty += r.quantityReceived
+      v.fob += r.purchasePriceFob * r.quantityReceived
+      v.landed += r.landedCost * r.quantityReceived
+      v.count += 1
+      byVendor.set(r.vendorAccount, v)
+    }
+    const totalQty = [...byVendor.values()].reduce((s, v) => s + v.qty, 0)
+    const mix = [...byVendor.entries()]
+      .filter(([, v]) => v.qty > 0)
+      .map(([account, v]) => ({
+        account,
+        name: v.name,
+        count: v.count,
+        share: totalQty !== 0 ? v.qty / totalQty : 0,
+        avgFob: v.fob / v.qty,
+        avgLanded: v.landed / v.qty,
+        leadTimeDays: result.vendors?.find((x) => x.vendorAccount === account)
+          ?.leadTimeDays,
+      }))
+      .sort((a, b) => b.share - a.share)
+
+    if (mix.length >= 2) {
+      const paragraphs: string[] = []
+      const cheapest = [...mix].sort((a, b) => a.avgFob - b.avgFob)[0]
+      const quoted = mix.filter((m) => m.leadTimeDays != null)
+      const fastest = [...quoted].sort(
+        (a, b) => a.leadTimeDays! - b.leadTimeDays!,
+      )[0]
+      if (
+        fastest &&
+        fastest.account !== cheapest.account &&
+        cheapest.leadTimeDays != null &&
+        fastest.avgFob - cheapest.avgFob >= cheapest.avgFob * 0.02 &&
+        cheapest.leadTimeDays - fastest.leadTimeDays! >= 3
+      ) {
+        paragraphs.push(
+          `${fastest.name} prices ${money(fastest.avgFob - cheapest.avgFob, cur)} per ${unit} over ${cheapest.name} at FOB ` +
+            `(${percent((fastest.avgFob - cheapest.avgFob) / cheapest.avgFob)}) but quotes ${n(fastest.leadTimeDays!, 'day')} ` +
+            `against ${cheapest.leadTimeDays} — the premium is what a fast replenishment costs when the ` +
+            `${cheapest.leadTimeDays}-day pipeline is short.`,
+        )
+      }
+      sections.push({
+        heading: 'Vendor mix',
+        paragraphs,
+        bullets: mix.map(
+          (m) =>
+            `${m.account} ${m.name} — ${n(m.count, 'receipt')}, ${percent(m.share)} of volume, ` +
+            `avg FOB ${money(m.avgFob, cur)} (landed ${money(m.avgLanded, cur)}) per ${unit}` +
+            (m.leadTimeDays != null ? `, ${m.leadTimeDays}-day quoted lead` : ''),
+        ),
+      })
+    }
+  }
+
   // --- Variance ------------------------------------------------------------
   if (analysis && analysis.receipts.length >= 2) {
     const paras: string[] = []

@@ -184,6 +184,14 @@ export interface Ref {
   name?: string
 }
 
+/** Vendor master detail for the vendors appearing in a result. */
+export interface VendorInfo {
+  vendorAccount: string
+  vendorName: string
+  /** Quoted order-to-dock lead time in days. Absent when the source does not carry one. */
+  leadTimeDays?: number
+}
+
 /**
  * Query parameters. `itemNumber` is the only required one; everything else
  * narrows the result. `daysBack` and the from/to pair are mutually exclusive —
@@ -218,6 +226,12 @@ export interface ProductCostResult {
    * to show them in the grid. Absent when the provider has none.
    */
   expected?: ReceiptRow[]
+  /**
+   * Vendor master rows for the vendor accounts present in `rows` or
+   * `expected`, when the source carries them — lead times feed the Copilot
+   * vendor-mix narrative. Absent on providers with no vendor master mapped.
+   */
+  vendors?: VendorInfo[]
   /**
    * Supply and pegged downstream demand for the impact analysis, when the
    * item has expected receipts to simulate against. See types/netting.ts.
