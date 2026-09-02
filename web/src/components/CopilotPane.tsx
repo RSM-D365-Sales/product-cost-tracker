@@ -54,9 +54,6 @@ export function CopilotPane({
       <header className="flex items-center gap-2 border-b border-stroke px-3 py-[9px]">
         <IconCopilot className="h-[18px] w-[18px] text-brand" />
         <span className="text-md font-semibold text-ink">Copilot</span>
-        <span className="border border-stroke bg-[#F3F2F1] px-[5px] py-px text-2xs uppercase tracking-wide text-ink-secondary">
-          Preview
-        </span>
         <button
           type="button"
           onClick={onClose}
