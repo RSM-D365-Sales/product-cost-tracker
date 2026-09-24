@@ -7,9 +7,9 @@ interface ImportMetaEnv {
   /** Base URL of the F&O environment, used to build drill-through deep links. */
   readonly VITE_D365_URL?: string
   /**
-   * The Finance and Operations bar is hidden by default (the app is built to
-   * be embedded in a real F&SC workspace). Set to 0 to build with the
-   * standalone chrome; `?embed=0` on the URL does the same per-session — see
+   * The bluestem title ribbon is shown by default (it carries the RSM sponsor
+   * mark). Set to 1 to build without it for embedding in a real F&SC
+   * workspace; `?embed=1` on the URL does the same per-session — see
    * lib/embed.ts.
    */
   readonly VITE_EMBED?: string

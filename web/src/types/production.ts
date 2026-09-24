@@ -29,7 +29,7 @@ import type {
  * D365 cost groups. Material and Packaging both come off the BOM; Labour and
  * Overhead both come off the route. Splitting packaging out of material is a
  * convention rather than a rule, but food manufacturers universally want to see
- * "what did the can cost me" separately from "what did the beans cost me".
+ * "what did the cup cost me" separately from "what did the apples cost me".
  */
 export type CostGroup = 'Material' | 'Packaging' | 'Labour' | 'Overhead'
 

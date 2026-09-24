@@ -55,7 +55,7 @@ import {
 } from '../lib/netting'
 import { purchasingNarrative } from '../lib/copilot'
 
-const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
+const COMPANY = import.meta.env.VITE_COMPANY ?? 'BSFP'
 
 const PAGE = PAGES.find((p) => p.id === 'product-cost')!
 

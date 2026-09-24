@@ -13,6 +13,12 @@
     @apply bg-canvas text-ink font-sans text-base antialiased;
   }
 
+  /* bluestem: headings in Poppins SemiBold, Midnight. Body and grids stay Segoe UI. */
+  h1,
+  h2 {
+    @apply font-display font-semibold text-midnight;
+  }
+
   /* F&O suppresses the native number spinners; the fields are typed, not nudged. */
   input[type='number']::-webkit-outer-spin-button,
   input[type='number']::-webkit-inner-spin-button {
@@ -48,7 +54,7 @@
            bg-white px-2 text-base text-ink outline-none transition-colors
            placeholder:text-ink-disabled
            hover:border-[#A19F9D] hover:border-b-[#242424]
-           focus:border-b-2 focus:border-b-brand focus:pb-px
+           focus:border-b-2 focus:border-b-rsmblue focus:pb-px
            disabled:cursor-not-allowed disabled:border-[#E1DFDD] disabled:bg-[#F3F2F1] disabled:text-ink-disabled;
   }
 
@@ -98,8 +104,16 @@
            px-2 py-[6px] text-left align-bottom text-sm font-semibold text-ink;
   }
 
+  /* nowrap: Bluestem's item, batch and warehouse ids (PKG-CLAM-PINT,
+     RAW-BLU-26247A, HRT-RM) are longer than F&O's demo ids and must not break
+     mid-code. Grids scroll sideways instead. Full-width detail rows
+     (colspan) keep wrapping, because they hold sentences. */
   .f-grid tbody td {
     @apply border-b border-stroke-subtle px-2 py-[5px] align-middle;
+  }
+
+  .f-grid tbody td:not([colspan]) {
+    @apply whitespace-nowrap;
   }
 
   .f-grid tbody tr:hover td {

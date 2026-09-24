@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
  * deployable to a static host — GitHub Pages included — with no rewrite rules.
  * It also survives the corporate proxy that blocks half of npm.
  *
- * Format: `#/<page>?item=FG816`. An unrecognised or absent hash resolves to the
+ * Format: `#/<page>?item=PK-BLU-PINT`. An unrecognised or absent hash resolves to the
  * product cost inquiry, so the bare URL opens where it always did.
  */
 

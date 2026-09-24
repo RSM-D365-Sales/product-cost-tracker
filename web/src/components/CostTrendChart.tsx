@@ -30,13 +30,13 @@ const SERIES = [
   {
     key: 'landed' as const,
     label: 'Landed cost',
-    color: '#0F6CBD',
+    color: '#009CDE',
     pick: (r: ReceiptRow) => r.landedCost,
   },
   {
     key: 'fob' as const,
     label: 'Purchase / material',
-    color: '#CA5010',
+    color: '#3F9C35',
     pick: (r: ReceiptRow) => r.purchasePriceFob,
   },
 ]
@@ -44,10 +44,10 @@ const SERIES = [
 export type SeriesKey = (typeof SERIES)[number]['key']
 
 // Chart chrome, one step off the surface so it stays recessive.
-const INK = '#242424'
-const INK_SECONDARY = '#605E5C'
-const INK_MUTED = '#8A8886'
-const GRID = '#E1DFDD'
+const INK = '#00153D'
+const INK_SECONDARY = '#5F6366'
+const INK_MUTED = '#888B8D'
+const GRID = '#E1E3E5'
 const SURFACE = '#FFFFFF'
 const FORECAST_WASH = '#FAF9F8'
 

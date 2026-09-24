@@ -33,10 +33,14 @@ check(
   (await page.locator('h1').innerText()) === 'Product cost inquiry',
 )
 
-// Built to be embedded in a real F&SC workspace: no bar of its own by default.
+// The bluestem title ribbon shows by default and carries the RSM sponsor mark,
+// which the brand guide requires on every app.
 check(
-  'the Finance and Operations bar is hidden by default',
-  (await page.getByText('Finance and Operations', { exact: true }).count()) === 0,
+  'the bluestem ribbon shows by default with the RSM sponsor mark',
+  (await page.getByText('Finance and Operations', { exact: true }).count()) === 1 &&
+    (await page.getByRole('img', { name: 'bluestem' }).count()) === 1 &&
+    (await page.getByRole('img', { name: 'RSM' }).isVisible()) &&
+    (await page.getByText('Powered by', { exact: true }).isVisible()),
 )
 
 /** Asserts one hand-authored anchor row is rendered with the expected figures. */
@@ -90,13 +94,14 @@ check(
   ),
 )
 
-await runFor('F440')
+await runFor('RAW-BLU')
 
 const rowCount = await page.locator('table.f-grid tbody tr').count()
 check('grid returns rows', rowCount > 0, `${rowCount} tbody rows`)
 
-// Three receipts of F440 from R1002 Davis Enterprises at the SAME $2.35 FOB
-// price that land at three different costs. This is the demo's headline.
+// Three receipts of RAW-BLU from V3014 Ridgeview Produce Exchange at the SAME
+// $2.35 FOB price that land at three different costs. This is the demo's
+// headline.
 for (const a of [
   { order: 'PO-000241', receipt: 'PR-104812', qty: '42,000', fob: '$2.35', aoc: '$0.42', landed: '$2.77' },
   { order: 'PO-000258', receipt: 'PR-105196', qty: '38,000', fob: '$2.35', aoc: '$0.31', landed: '$2.66' },
@@ -105,8 +110,9 @@ for (const a of [
   await checkAnchor(a)
 }
 
-// Every raw-material receipt lands in site 2 / warehouse 24. Columns 1 and 2
-// are the select radio and the expander, so site is the 8th cell.
+// Every blueberry receipt lands in the Hart packing house's receiving cooler.
+// Columns 1 and 2 are the select radio and the expander, so site is the 8th
+// cell.
 const siteCells = await page
   .locator('table.f-grid tbody tr td:nth-child(8)')
   .allInnerTexts()
@@ -114,10 +120,10 @@ const whsCells = await page
   .locator('table.f-grid tbody tr td:nth-child(9)')
   .allInnerTexts()
 check(
-  'raw material received into site 2 / warehouse 24',
+  'blueberries received into HRT / HRT-RM',
   siteCells.length > 0 &&
-    siteCells.every((s) => s.trim() === '2') &&
-    whsCells.every((s) => s.trim() === '24'),
+    siteCells.every((s) => s.trim() === 'HRT') &&
+    whsCells.every((s) => s.trim() === 'HRT-RM'),
   `sites ${[...new Set(siteCells.map((s) => s.trim()))]} / whs ${[...new Set(whsCells.map((s) => s.trim()))]}`,
 )
 
@@ -237,16 +243,16 @@ await page.waitForTimeout(200)
 
 // --- Finished goods --------------------------------------------------------
 // The produced items are reported as finished against production orders, and
-// each run must carry the actual cost of the avocado batch it consumed.
-await runFor('FG816')
+// each run must carry the actual cost of the blueberry batch it consumed.
+await runFor('PK-BLU-PINT')
 
 const fgRows = await page.locator('table.f-grid tbody tr').count()
-check('FG816 returns production rows', fgRows > 0, `${fgRows} tbody rows`)
+check('PK-BLU-PINT returns production rows', fgRows > 0, `${fgRows} tbody rows`)
 
 for (const a of [
-  { order: 'P000318', receipt: 'PJ-000318', qty: '12,400', fob: '$6.93', aoc: '$1.00', landed: '$7.93' },
-  { order: 'P000341', receipt: 'PJ-000341', qty: '11,200', fob: '$6.65', aoc: '$0.97', landed: '$7.62' },
-  { order: 'P000369', receipt: 'PJ-000369', qty: '12,000', fob: '$7.25', aoc: '$1.04', landed: '$8.29' },
+  { order: 'P000318', receipt: 'PJ-000318', qty: '3,400', fob: '$24.93', aoc: '$3.63', landed: '$28.56' },
+  { order: 'P000341', receipt: 'PJ-000341', qty: '3,100', fob: '$23.94', aoc: '$3.54', landed: '$27.48' },
+  { order: 'P000369', receipt: 'PJ-000369', qty: '3,300', fob: '$26.10', aoc: '$3.76', landed: '$29.86' },
 ]) {
   await checkAnchor(a)
 }
@@ -269,7 +275,7 @@ const detail = await page
   .innerText()
 check(
   'production row traces its consumed batch',
-  detail.includes('F440-26061A') && detail.includes('$6.93'),
+  detail.includes('RAW-BLU-26061A') && detail.includes('$24.93'),
   detail.replace(/\s+/g, ' ').slice(0, 160),
 )
 
@@ -277,7 +283,7 @@ await page.screenshot({ path: 'verify-production.png', fullPage: true })
 console.log('Screenshot written to verify-production.png')
 
 // --- Cost trend ------------------------------------------------------------
-await runFor('F440')
+await runFor('RAW-BLU')
 await page.getByRole('button', { name: 'Cost trend', exact: true }).click()
 await page.waitForTimeout(500)
 
@@ -342,9 +348,9 @@ await page.waitForTimeout(200)
 
 // --- Background catalogue --------------------------------------------------
 // The filler items exist so the lookups and filters look real. They must return
-// rows, and must NOT be receiving into the focus items' warehouse 24 only —
+// rows, and must NOT be receiving into a single warehouse only —
 // that is what gives the site/warehouse filters something to do.
-await runFor('PKG101')
+await runFor('PKG-CUP-2OZ')
 const pkgRows = await page.locator('table.f-grid tbody tr').count()
 const pkgWhs = new Set(
   (await page.locator('table.f-grid tbody tr td:nth-child(9)').allInnerTexts()).map(
@@ -412,7 +418,7 @@ check(
   (await itemField().inputValue()) === '',
   await itemField().inputValue(),
 )
-await planFor('FG816')
+await planFor('PK-BLU-PINT')
 await page.waitForTimeout(100)
 
 const planRows = await page
@@ -429,7 +435,7 @@ const batchTable = await page
   .innerText()
 check(
   'batches show expiry, shelf life and landed cost',
-  /EXPIRING|AVAILABLE/.test(batchTable) && /F440-\d{5}[A-Z]/.test(batchTable),
+  /EXPIRING|AVAILABLE/.test(batchTable) && /RAW-BLU-\d{5}[A-Z]/.test(batchTable),
 )
 
 // The bill of material must show the raw material AND real packaging items,
@@ -450,7 +456,7 @@ const bomText = await page
 check(
   'bill of material lists components and route operations',
   // The cost-basis tag is CSS-uppercased, so match without regard to case.
-  ['F440', 'PKG420', 'PKG430', 'on-hand average', 'pack line'].every((s) =>
+  ['RAW-BLU', 'PKG-CLAM-PINT', 'PKG-CTN-RSC-12', 'on-hand average', 'pack line'].every((s) =>
     bomText.toLowerCase().includes(s.toLowerCase()),
   ),
   bomText.replace(/\s+/g, ' ').slice(0, 200),
@@ -460,8 +466,8 @@ check(
 // a real cost — that reads as broken data rather than a small number.
 check(
   'small BOM quantities keep their precision',
-  /0\.00025/.test(bomText) && /\$0\.0044/.test(bomText),
-  bomText.replace(/\s+/g, ' ').match(/PKG305[^\n]*/)?.[0] ?? 'PKG305 line not found',
+  /0\.00025/.test(bomText) && /\$0\.00[1-9]\d/.test(bomText),
+  bomText.replace(/\s+/g, ' ').match(/PKG-LBL-CASE.{0,120}/)?.[0] ?? 'PKG-LBL-CASE line not found',
 )
 
 // Batch actual costing: runs of the same item on the same line must NOT all
@@ -480,7 +486,7 @@ check(
   `${unitCosts.size} distinct cost-per-unit values`,
 )
 
-// The headline: the oldest avocado lot cannot be converted before it expires
+// The headline: the oldest blueberry lot cannot be converted before it expires
 // on the two committed lines, and the plan puts a number on the loss.
 const atRiskBefore = await planMoney('Material at risk')
 const outputBefore = await planQuantity('Planned output')
@@ -493,7 +499,7 @@ check(
 // ...and committing the co-packer recovers it. This is the demo.
 await page.getByRole('button', { name: 'Show parameters' }).first().click()
 await page.waitForTimeout(250)
-await page.locator('label', { hasText: 'PL-CP1' }).locator('input').check()
+await page.locator('label', { hasText: 'HOL-CP1' }).locator('input').check()
 await page.getByRole('button', { name: 'Run inquiry', exact: true }).click()
 await page.waitForTimeout(1100)
 
@@ -508,9 +514,9 @@ check(
 await page.screenshot({ path: 'verify-production-plan.png', fullPage: true })
 console.log('Screenshot written to verify-production-plan.png')
 
-// The canned line is constrained by how much it has, not by shelf life — the
-// contrast that shows the avocado result is about expiry, not volume.
-await planFor('FG841')
+// The apple-slice line is constrained by how much it has, not by shelf life —
+// the contrast that shows the blueberry result is about expiry, not volume.
+await planFor('FC-APL-SLC-2OZ')
 check(
   'long shelf life item has nothing at risk',
   (await planMoney('Material at risk')) === 0,
@@ -549,7 +555,7 @@ await prodVarTab.getByRole('button', { name: 'Expand Packaging' }).click()
 await page.waitForTimeout(250)
 check(
   'packaging drills down to its component lines',
-  ((await prodVarTab.innerText()).match(/PKG101/g) ?? []).length > 0,
+  ((await prodVarTab.innerText()).match(/PKG-CUP-2OZ/g) ?? []).length > 0,
 )
 
 await page.screenshot({ path: 'verify-production-variance.png', fullPage: true })
@@ -565,7 +571,7 @@ const copilotText = (
 ).replace(/\s+/g, ' ')
 check(
   'Copilot writes an analysis of the production activity',
-  copilotText.includes('FG841') &&
+  copilotText.includes('FC-APL-SLC-2OZ') &&
     copilotText.includes('Suggested actions') &&
     /AI-generated content may be incorrect/.test(copilotText),
   copilotText.slice(0, 160),
@@ -582,17 +588,17 @@ await page.waitForTimeout(800)
 check(
   'a component drills through to the product cost inquiry',
   (await page.locator('h1').innerText()) === 'Product cost inquiry' &&
-    (await page.evaluate(() => location.hash)) === '#/product-cost?item=RAW541',
+    (await page.evaluate(() => location.hash)) === '#/product-cost?item=RAW-APL-HC',
   await page.evaluate(() => location.hash),
 )
 
 // --- Standalone chrome ------------------------------------------------------
-// ?embed=0 restores the app's own Finance and Operations bar for demos run
-// outside D365, and its navigation pane must route between the two inquiries.
+// ?embed=1 drops the ribbon for hosting inside D365; ?embed=0 keeps it, and
+// its navigation pane must route between the two inquiries.
 await page.goto(`${base}/?embed=0#/product-cost`, { waitUntil: 'networkidle' })
 await page.waitForTimeout(300)
 check(
-  'embed=0 restores the Finance and Operations bar',
+  'embed=0 keeps the bluestem ribbon',
   (await page.getByText('Finance and Operations', { exact: true }).count()) ===
     1 && (await page.locator('h1').innerText()) === 'Product cost inquiry',
 )
@@ -607,6 +613,14 @@ check(
   'navigation pane opens the production cost inquiry',
   (await page.locator('h1').innerText()) === 'Production cost inquiry' &&
     (await page.evaluate(() => location.hash)) === '#/production-cost',
+)
+
+await page.goto(`${base}/?embed=1#/product-cost`, { waitUntil: 'networkidle' })
+await page.waitForTimeout(300)
+check(
+  'embed=1 drops the ribbon for hosting inside F&SC',
+  (await page.getByText('Finance and Operations', { exact: true }).count()) === 0 &&
+    (await page.locator('h1').innerText()) === 'Product cost inquiry',
 )
 
 check('no console/page errors', errors.length === 0, errors.join(' ; '))

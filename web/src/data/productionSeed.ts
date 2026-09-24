@@ -29,31 +29,34 @@ import { costGroupOfConversionCode } from '../lib/variance'
  * Days from receipt to expiry. Only batch-tracked items carry one; packaging is
  * bought to a min/max, is not lot controlled, and does not go off.
  *
- * These are the numbers the whole plan turns on. Bulk avocados at 21 days are
- * the reason the FEFO ordering matters; black beans at two years are the
- * contrast that shows it is shelf life, not quantity, doing the work.
+ * These are the numbers the whole plan turns on. Blueberries at 21 days are
+ * the reason the FEFO ordering matters; Honeycrisp at 120 days out of CA
+ * storage are the contrast that shows it is shelf life, not quantity, doing
+ * the work. Figures follow Bluestem's item master (items.csv).
  */
 const SHELF_LIFE_DAYS: Record<string, number> = {
   // Focus items
-  F440: 21,
-  RAW541: 730,
-  FG816: 14,
-  FG841: 1095,
-  // Background produce, dry goods and ingredients
-  F410: 12, // Bulk Mangos
-  F460: 24, // Bulk Limes
-  RAW512: 730,
-  RAW566: 730,
-  RAW580: 540,
-  ING220: 545, // Olive oil
-  ING305: 400, // Tomato puree
-  ING410: 1_825, // Sea salt
-  ING455: 730, // Seasoning blend
-  FG802: 1095,
-  FG825: 1095,
-  FG860: 365,
-  FG874: 548,
-  FG892: 545,
+  'RAW-BLU': 21,
+  'RAW-APL-HC': 120,
+  'PK-BLU-PINT': 12,
+  'FC-APL-SLC-2OZ': 18,
+  // Background produce and ingredients
+  'RAW-APL-GA': 120,
+  'RAW-ROM': 14,
+  'RAW-CUC': 14,
+  'RAW-PEP': 14,
+  'RAW-ASP': 14,
+  'RAW-SQB': 90,
+  'ING-ASCORB': 365,
+  'ING-DIP-RANCH': 60,
+  'ING-CAESAR-KIT': 120,
+  // Background finished goods
+  'PK-APL-GA-3LB': 45,
+  'PK-ASP-1LB': 10,
+  'PK-CUC-SLC': 12,
+  'FC-SAL-ROM-CHOP': 12,
+  'FC-VEG-SQB-DICE': 12,
+  'FC-PEP-DICE-5LB': 10,
 }
 
 /**
@@ -74,10 +77,20 @@ const TURN_DAYS_DEFAULT: Record<CatalogItem['kind'], number> = {
 }
 
 const TURN_DAYS: Record<string, number> = {
-  F440: 24,
-  RAW541: 70,
-  FG816: 16,
-  FG841: 60,
+  'RAW-BLU': 24,
+  'RAW-APL-HC': 70,
+  'PK-BLU-PINT': 10,
+  'FC-APL-SLC-2OZ': 14,
+  // Two-week produce turns inside its shelf life, as it has to.
+  'RAW-ROM': 12,
+  'RAW-CUC': 12,
+  'RAW-PEP': 12,
+  'RAW-ASP': 12,
+  'PK-ASP-1LB': 8,
+  'PK-CUC-SLC': 10,
+  'FC-SAL-ROM-CHOP': 10,
+  'FC-VEG-SQB-DICE': 10,
+  'FC-PEP-DICE-5LB': 8,
 }
 
 export function shelfLifeOf(itemNumber: string): number | undefined {
@@ -144,40 +157,41 @@ export interface BomSpec {
  * operations rather than being one lump.
  *
  * Rolling these up at today's costs does NOT reproduce the conversion cost on
- * the historical production receipts, and that is deliberate. FG816 comes out
- * about 2% above its item cost; FG841 comes out nearly 18% above, because
- * twenty-four cans at today's price cost more than the beans that go in them.
+ * the historical production receipts, and that is deliberate. PK-BLU-PINT
+ * comes out close to its item cost; FC-APL-SLC-2OZ comes out well above it,
+ * because the fruit on hand today landed dearer than the fruit the cost record
+ * was set from, and twenty-four cups and lids to a case are not free either.
  * The gap between a calculated cost and a stale item cost is the thing a
  * production cost inquiry exists to expose.
  */
 const BOM_SPECS: Record<string, BomSpec> = {
-  FG816: {
-    bomId: 'BOM-FG816',
+  'PK-BLU-PINT': {
+    bomId: 'BOM-PK-BLU-PINT',
     bomVersion: 'V3',
-    routeId: 'RTE-FG816',
+    routeId: 'RTE-PK-BLU-PINT',
     perSeries: 1_000,
     approvedDaysAgo: 138,
     components: [
       {
         lineNumber: 10,
-        itemNumber: 'F440',
-        quantityPer: 2.5,
+        itemNumber: 'RAW-BLU',
+        quantityPer: 9,
         unit: 'lb',
-        // Grading out undersize and blemished fruit off the wash line.
+        // Soft, split and stemmed fruit sorted out on the optical sorter.
         scrapPercent: 0.03,
         costGroup: 'Material',
       },
       {
         lineNumber: 20,
-        itemNumber: 'PKG420',
-        quantityPer: 1,
+        itemNumber: 'PKG-CLAM-PINT',
+        quantityPer: 12,
         unit: 'ea',
         scrapPercent: 0.015,
         costGroup: 'Packaging',
       },
       {
         lineNumber: 30,
-        itemNumber: 'PKG430',
+        itemNumber: 'PKG-CTN-RSC-12',
         quantityPer: 1,
         unit: 'ea',
         scrapPercent: 0.01,
@@ -185,8 +199,8 @@ const BOM_SPECS: Record<string, BomSpec> = {
       },
       {
         lineNumber: 40,
-        itemNumber: 'PKG305',
-        // One roll of 4,000 labels covers 4,000 packs.
+        itemNumber: 'PKG-LBL-CASE',
+        // One case label off a roll of 4,000.
         quantityPer: 0.00025,
         unit: 'ea',
         scrapPercent: 0,
@@ -196,62 +210,62 @@ const BOM_SPECS: Record<string, BomSpec> = {
     operations: [
       {
         operationNumber: 10,
-        description: 'Wash, grade and size',
-        resourceId: 'PACK-01',
+        description: 'Receive, pre-cool and optical sort',
+        resourceId: 'HRT-P2',
         costGroup: 'Labour',
-        costPerUnit: 0.11,
+        costPerUnit: 0.42,
       },
       {
         operationNumber: 20,
-        description: 'Pack line — bag, tray and seal',
-        resourceId: 'PACK-01',
+        description: 'Pack line — fill, lid and case',
+        resourceId: 'HRT-P2',
         costGroup: 'Labour',
-        costPerUnit: 0.27,
+        costPerUnit: 0.88,
       },
       {
         operationNumber: 30,
         description: 'Production overhead',
-        resourceId: 'PACK-01',
+        resourceId: 'HRT-P2',
         costGroup: 'Overhead',
-        costPerUnit: 0.22,
+        costPerUnit: 0.75,
       },
       {
         operationNumber: 40,
         description: 'Quality and food safety',
-        resourceId: 'QA-01',
+        resourceId: 'QA-HRT',
         costGroup: 'Overhead',
-        costPerUnit: 0.06,
+        costPerUnit: 0.18,
       },
     ],
   },
 
-  FG841: {
-    bomId: 'BOM-FG841',
+  'FC-APL-SLC-2OZ': {
+    bomId: 'BOM-FC-APL-SLC-2OZ',
     bomVersion: 'V2',
-    routeId: 'RTE-FG841',
+    routeId: 'RTE-FC-APL-SLC-2OZ',
     perSeries: 500,
     approvedDaysAgo: 402,
     components: [
       {
         lineNumber: 10,
-        itemNumber: 'RAW541',
-        quantityPer: 6,
+        itemNumber: 'RAW-APL-HC',
+        quantityPer: 4,
         unit: 'lb',
         scrapPercent: 0.02,
         costGroup: 'Material',
       },
       {
         lineNumber: 20,
-        itemNumber: 'PKG101',
+        itemNumber: 'PKG-CUP-2OZ',
         quantityPer: 24,
         unit: 'ea',
-        // Seamer rejects and dented ends.
+        // Fill-and-seal rejects and mis-seated lids.
         scrapPercent: 0.012,
         costGroup: 'Packaging',
       },
       {
         lineNumber: 30,
-        itemNumber: 'PKG210',
+        itemNumber: 'PKG-CTN-RSC-24',
         quantityPer: 1,
         unit: 'ea',
         scrapPercent: 0.005,
@@ -259,9 +273,9 @@ const BOM_SPECS: Record<string, BomSpec> = {
       },
       {
         lineNumber: 40,
-        itemNumber: 'PKG305',
-        // 24 labels off a 12,000-label roll.
-        quantityPer: 0.002,
+        itemNumber: 'PKG-LBL-CASE',
+        // One case label off a roll of 4,000.
+        quantityPer: 0.00025,
         unit: 'ea',
         scrapPercent: 0,
         costGroup: 'Packaging',
@@ -270,31 +284,31 @@ const BOM_SPECS: Record<string, BomSpec> = {
     operations: [
       {
         operationNumber: 10,
-        description: 'Soak, rinse and blanch',
-        resourceId: 'RETORT-01',
+        description: 'Wash, core and slice',
+        resourceId: 'GRP-L1',
         costGroup: 'Labour',
-        costPerUnit: 0.31,
+        costPerUnit: 0.42,
       },
       {
         operationNumber: 20,
-        description: 'Fill, seam and retort',
-        resourceId: 'RETORT-01',
+        description: 'Anti-browning dip, fill and lid',
+        resourceId: 'GRP-L1',
         costGroup: 'Labour',
-        costPerUnit: 0.64,
+        costPerUnit: 0.68,
       },
       {
         operationNumber: 30,
-        description: 'Production overhead — retort',
-        resourceId: 'RETORT-01',
+        description: 'Production overhead — slicing line',
+        resourceId: 'GRP-L1',
         costGroup: 'Overhead',
-        costPerUnit: 0.45,
+        costPerUnit: 0.62,
       },
       {
         operationNumber: 40,
         description: 'Quality and food safety',
-        resourceId: 'QA-01',
+        resourceId: 'QA-GRP',
         costGroup: 'Overhead',
-        costPerUnit: 0.1,
+        costPerUnit: 0.12,
       },
     ],
   },
@@ -306,10 +320,10 @@ const BOM_SPECS: Record<string, BomSpec> = {
  *
  * Coarser than the hand-authored pair on purpose — the packaging lines are one
  * "set" per finished unit rather than a real component item and pack ratio,
- * because nothing in the demo inspects them and inventing pack ratios for five
- * background products would be five more things that could be wrong. What it
+ * because nothing in the demo inspects them and inventing pack ratios for six
+ * background products would be six more things that could be wrong. What it
  * does guarantee is that the roll-up ties exactly to the item's own production
- * receipts, so a prospect who types FG802 gets a page that is internally
+ * receipts, so a prospect who types PK-CUC-SLC gets a page that is internally
  * consistent rather than an empty one.
  */
 function deriveBomSpec(item: CatalogItem): BomSpec {
@@ -382,90 +396,102 @@ export function bomSpecFor(item: CatalogItem): BomSpec {
 
 /**
  * `hoursPerDay` is hours COMMITTED to this item family, not hours the line
- * exists for. A pack line that also runs three other SKUs cannot give the
- * avocado plan sixteen hours, and committed hours is the number a planner
- * actually negotiates — which is why it is the knob the page exposes.
+ * exists for. A pack line that also runs cherries cannot give the blueberry
+ * plan sixteen hours, and committed hours is the number a planner actually
+ * negotiates — which is why it is the knob the page exposes. Line ids and
+ * names follow Bluestem's production_lines.csv where the line exists there.
  *
  * The co-pack line is off by default. Turning it on is what rescues the oldest
- * avocado lot from being written off, and is the moment the demo is built
+ * blueberry lot from being written off, and is the moment the demo is built
  * around: the plan quantifies the spoilage, and the parameters fix it.
  */
 export const PRODUCTION_LINES: ProductionLine[] = [
   {
-    lineId: 'PL-AV1',
-    name: 'Avocado pack line 1',
-    siteId: '2',
-    warehouseId: '26',
-    itemNumbers: ['FG816'],
-    unitsPerHour: 1_200,
+    lineId: 'HRT-P2',
+    name: 'Berry & Cherry Pack Line',
+    siteId: 'HRT',
+    warehouseId: 'HRT-FG',
+    itemNumbers: ['PK-BLU-PINT'],
+    unitsPerHour: 330,
     hoursPerDay: 6,
     setupHours: 0.75,
     enabledByDefault: true,
   },
   {
-    lineId: 'PL-AV2',
-    name: 'Avocado pack line 2',
-    siteId: '2',
-    warehouseId: '26',
-    itemNumbers: ['FG816'],
-    unitsPerHour: 900,
+    lineId: 'HRT-P3',
+    name: 'Berry Pack Line 2 (seasonal)',
+    siteId: 'HRT',
+    warehouseId: 'HRT-FG',
+    itemNumbers: ['PK-BLU-PINT'],
+    unitsPerHour: 250,
     hoursPerDay: 4,
     setupHours: 0.75,
     enabledByDefault: true,
   },
   {
-    lineId: 'PL-CP1',
-    name: 'Co-pack line — Co-pack facility',
-    siteId: '3',
-    warehouseId: '31',
-    itemNumbers: ['FG816'],
-    unitsPerHour: 600,
+    lineId: 'HOL-CP1',
+    name: 'Co-pack line — Holland DC',
+    siteId: 'HOL',
+    warehouseId: 'HOL-CP',
+    itemNumbers: ['PK-BLU-PINT'],
+    unitsPerHour: 170,
     hoursPerDay: 10,
     setupHours: 1.5,
     enabledByDefault: false,
   },
   {
-    lineId: 'PL-RT1',
-    name: 'Retort line 1',
-    siteId: '2',
-    warehouseId: '26',
-    itemNumbers: ['FG841'],
-    unitsPerHour: 400,
+    lineId: 'GRP-L1',
+    name: 'Apple Slicing Line 1',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    itemNumbers: ['FC-APL-SLC-2OZ'],
+    unitsPerHour: 420,
     hoursPerDay: 10,
-    setupHours: 2,
+    setupHours: 1,
     enabledByDefault: true,
   },
   {
-    lineId: 'PL-RT2',
-    name: 'Retort line 2',
-    siteId: '2',
-    warehouseId: '26',
-    itemNumbers: ['FG841'],
-    unitsPerHour: 300,
+    lineId: 'GRP-L2',
+    name: 'Apple Slicing Line 2',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    itemNumbers: ['FC-APL-SLC-2OZ'],
+    unitsPerHour: 420,
     hoursPerDay: 6,
-    setupHours: 2,
+    setupHours: 1,
     enabledByDefault: true,
   },
-  // Background finished goods share two general-purpose lines rather than each
+  // Background finished goods share Bluestem's other lines rather than each
   // getting authored capacity of its own.
   {
-    lineId: 'PL-GP1',
-    name: 'General packing line 1',
-    siteId: '2',
-    warehouseId: '26',
-    itemNumbers: ['FG802', 'FG825', 'FG860', 'FG874', 'FG892'],
-    unitsPerHour: 500,
+    lineId: 'GRP-L3',
+    name: 'Vegetable Dice & Blend Line',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    itemNumbers: ['FC-VEG-SQB-DICE', 'FC-PEP-DICE-5LB', 'PK-CUC-SLC'],
+    unitsPerHour: 300,
     hoursPerDay: 8,
     setupHours: 1,
     enabledByDefault: true,
   },
   {
-    lineId: 'PL-GP2',
-    name: 'General packing line 2',
-    siteId: '1',
-    warehouseId: '11',
-    itemNumbers: ['FG802', 'FG825', 'FG860', 'FG874', 'FG892'],
-    unitsPerHour: 350,
+    lineId: 'GRP-L4',
+    name: 'Salad Kit Line',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    itemNumbers: ['FC-SAL-ROM-CHOP'],
+    unitsPerHour: 360,
+    hoursPerDay: 8,
+    setupHours: 1,
+    enabledByDefault: true,
+  },
+  {
+    lineId: 'HRT-P1',
+    name: 'Apple Pack Line',
+    siteId: 'HRT',
+    warehouseId: 'HRT-FG',
+    itemNumbers: ['PK-APL-GA-3LB', 'PK-ASP-1LB'],
+    unitsPerHour: 600,
     hoursPerDay: 6,
     setupHours: 1,
     enabledByDefault: true,

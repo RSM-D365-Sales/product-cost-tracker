@@ -31,8 +31,8 @@ const HORIZON_DAYS = 28
 
 /** Stable planned-order number ranges per focus raw material. */
 const PLANNED_ORDER_BASE: Record<string, number> = {
-  F440: 110,
-  RAW541: 210,
+  'RAW-BLU': 110,
+  'RAW-APL-HC': 210,
 }
 
 let impactCache: { asOf: string; byItem: Map<string, ImpactInputs | undefined> } | null =

@@ -2,14 +2,14 @@
  * Drill-through deep links back into Finance and Operations.
  *
  * F&O accepts a menu item plus a record filter on the query string, e.g.
- *   {env}/?cmp=USMF&mi=action:PurchTableListPage&PurchTable.PurchId=000123
+ *   {env}/?cmp=BSFP&mi=action:PurchTableListPage&PurchTable.PurchId=000123
  *
  * When VITE_D365_URL is unset (the offline demo case) these return null and the
  * UI renders the value as plain text instead of a dead link.
  */
 
 const BASE = (import.meta.env.VITE_D365_URL ?? '').replace(/\/+$/, '')
-const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
+const COMPANY = import.meta.env.VITE_COMPANY ?? 'BSFP'
 
 export const deepLinksEnabled = BASE.length > 0
 

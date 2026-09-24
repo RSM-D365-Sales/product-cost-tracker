@@ -13,7 +13,7 @@
  * same medallion work a production build needs.
  *
  * Why from the seed: the lakehouse then contains EXACTLY the receipts the web
- * inquiry shows. The three F440 anchor loads land at $2.77 / $2.66 / $2.90 in
+ * inquiry shows. The three RAW-BLU anchor loads land at $2.77 / $2.66 / $2.90 in
  * both places, so the two surfaces reconcile to the cent — run this script and
  * compare its summary against the app's Summary block.
  *
@@ -41,7 +41,7 @@ import { costGroupOfConversionCode } from '../web/src/lib/variance'
 import { todayIso } from '../web/src/lib/format'
 
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), 'out')
-const DATAAREAID = 'usmf'
+const DATAAREAID = 'bsfp'
 const today = todayIso()
 
 // F&O RecIds famously start in this range; a shared sequence across tables
@@ -416,7 +416,7 @@ for (const [name, t] of rowsOf) {
 }
 
 console.log('\nReconciliation — compare against the app Summary block:')
-for (const itemNumber of ['F440', 'RAW541', 'FG816', 'FG841']) {
+for (const itemNumber of ['RAW-BLU', 'RAW-APL-HC', 'PK-BLU-PINT', 'FC-APL-SLC-2OZ']) {
   const item = itemByNumber(itemNumber)!
   const rows = posted.filter((r) => r.itemNumber === itemNumber)
   const qty = rows.reduce((s, r) => s + r.quantityReceived, 0)

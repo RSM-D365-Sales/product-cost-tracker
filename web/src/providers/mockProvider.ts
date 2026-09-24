@@ -225,7 +225,7 @@ export const mockProvider: ProductCostProvider = {
     const bom = costBom(
       spec,
       itemInfo,
-      query.siteId || '2',
+      query.siteId || item.production?.siteId || 'GRP',
       planStartDate,
       masters,
       onHand,

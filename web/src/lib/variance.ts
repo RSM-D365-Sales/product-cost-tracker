@@ -10,7 +10,7 @@ import type { CostGroup, CostRollup } from '../types/production'
  *
  * LANDED COST (`analyseLandedVariance`) sets every receipt in a result against
  * the quantity-weighted baseline of that same result and decomposes the gap
- * into named causes — purchase price, transportation, customs and duty, and so
+ * into named causes — purchase price, transportation, customs and border, and so
  * on — by bucketing the charge codes. The cause deltas sum exactly to the
  * landed variance, because landed cost is exactly FOB plus charges; nothing is
  * estimated.
@@ -44,14 +44,14 @@ const CAUSE_OF_CODE: Record<string, { key: string; label: string }> = {
   PALLET: { key: 'TRANSPORT', label: 'Transportation' },
   DEMUR: { key: 'TRANSPORT', label: 'Transportation' },
   PRECOOL: { key: 'COLDCHAIN', label: 'Cold chain' },
-  BROKER: { key: 'CUSTOMS', label: 'Customs & duty' },
-  DUTY: { key: 'CUSTOMS', label: 'Customs & duty' },
+  BROKER: { key: 'CUSTOMS', label: 'Customs & border' },
+  CUSTOMS: { key: 'CUSTOMS', label: 'Customs & border' },
   INSPECT: { key: 'COMPLIANCE', label: 'Inspection & testing' },
   LABTEST: { key: 'COMPLIANCE', label: 'Inspection & testing' },
-  FUMIG: { key: 'COMPLIANCE', label: 'Inspection & testing' },
+  CASTOR: { key: 'STORAGE', label: 'Storage & handling' },
   // Conversion codes on production receipts.
   PACK: { key: 'PACKAGING', label: 'Packaging' },
-  CAN: { key: 'PACKAGING', label: 'Packaging' },
+  CUP: { key: 'PACKAGING', label: 'Packaging' },
   LABEL: { key: 'PACKAGING', label: 'Packaging' },
   LABOR: { key: 'LABOUR', label: 'Labour' },
   OVHD: { key: 'OVERHEAD', label: 'Overhead' },

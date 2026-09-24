@@ -253,7 +253,7 @@ FROM silver_product_receipts r
 LEFT JOIN (
   SELECT itemid, COUNT(*) AS open_pos FROM silver_open_po_lines GROUP BY itemid
 ) o ON o.itemid = r.itemid
-WHERE r.itemid IN ('F440', 'RAW541')
+WHERE r.itemid IN ('RAW-BLU', 'RAW-APL-HC')
 GROUP BY r.itemid, o.open_pos
 UNION ALL
 SELECT p.itemid,
@@ -262,9 +262,9 @@ SELECT p.itemid,
        ROUND(SUM(p.total_unit * p.qtygood) / SUM(p.qtygood), 4),
        0
 FROM silver_production_costs p
-WHERE p.itemid IN ('FG816', 'FG841')
+WHERE p.itemid IN ('PK-BLU-PINT', 'FC-APL-SLC-2OZ')
 GROUP BY p.itemid
 ORDER BY itemid
 """))
 
-display(spark.sql("SELECT * FROM gold_item_cost_points WHERE itemid IN ('F440','RAW541','FG816','FG841') ORDER BY itemid"))
+display(spark.sql("SELECT * FROM gold_item_cost_points WHERE itemid IN ('RAW-BLU','RAW-APL-HC','PK-BLU-PINT','FC-APL-SLC-2OZ') ORDER BY itemid"))

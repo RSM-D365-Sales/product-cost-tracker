@@ -476,7 +476,9 @@ export function productionNarrative(
   const planParas: string[] = [
     `The plan proposes ${n(summary.runCount, 'run')} for ${qty(summary.plannedQuantity)} ${unit} ` +
       `at an average ${money(summary.averageCostPerUnit, cur)}, using ${percent(summary.capacityUtilisation)} of committed line hours. ` +
-      `Binding constraint: ${summary.bindingConstraint.toLowerCase()}.`,
+      // Lower-case only the leading word: the rest names an item number
+      // (RAW-APL-HC), which must keep its case.
+      `Binding constraint: ${summary.bindingConstraint.charAt(0).toLowerCase()}${summary.bindingConstraint.slice(1)}.`,
   ]
   if (summary.atRiskValue > 0) {
     const worstLot = [...atRisk].sort((a, b) => b.value - a.value)[0]

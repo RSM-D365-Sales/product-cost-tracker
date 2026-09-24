@@ -67,7 +67,7 @@ export function BomPanel({
       {
         key: 'item',
         header: 'Item',
-        width: '92px',
+        width: '130px',
         sortValue: (r) => r.itemNumber,
         render: (r) =>
           onOpenItem && r.batchTracked ? (

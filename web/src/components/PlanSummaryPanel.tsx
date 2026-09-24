@@ -43,7 +43,7 @@ export function PlanSummaryPanel({
 }) {
   const c = summary.currency
   // The at-risk quantity is measured in the CONSUMED component's unit (lb of
-  // avocados), not the finished item's (packs), so it has to come off the rows.
+  // blueberries), not the finished item's (cases), so it has to come off the rows.
   const atRiskUnit = atRisk[0]?.unit ?? ''
 
   return (

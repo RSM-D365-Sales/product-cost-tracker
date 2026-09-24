@@ -6,41 +6,53 @@ export default {
       fontFamily: {
         // D365 F&SCM ships Segoe UI; the fallbacks keep it sane off-Windows.
         sans: ['"Segoe UI"', '"Segoe UI Web (West European)"', 'system-ui', '-apple-system', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        // bluestem brand headings (bundled via @fontsource, no CDN).
+        display: ['Poppins', '"Segoe UI"', 'system-ui', 'sans-serif'],
         mono: ['"Cascadia Mono"', 'Consolas', '"Courier New"', 'monospace'],
       },
       colors: {
-        // Fluent / D365 F&O palette tokens.
+        // bluestem palette (BRAND_GUIDE.md, colours borrowed from rsmus.com)
+        // mapped onto the Fluent / D365 F&O token names the components use.
+        midnight: '#00153D',
+        rsmblue: '#009CDE',
+        rsmgreen: '#3F9C35',
+        midgrey: '#888B8D',
         nav: {
-          DEFAULT: '#152B3C',
-          hover: '#22405A',
+          DEFAULT: '#00153D',
+          hover: '#0B2454',
           text: '#FFFFFF',
         },
+        // RSM Blue is too light for white button text and small links (about
+        // 3:1), so actions use a deeper shade of it that passes AA; the pure
+        // RSM Blue stays on accents, focus underlines and chart series 1.
         brand: {
-          DEFAULT: '#0F6CBD',
-          hover: '#115EA3',
-          pressed: '#0C3B5E',
-          tint: '#EFF6FC',
-          border: '#0F6CBD',
+          DEFAULT: '#0079AD',
+          hover: '#00648F',
+          pressed: '#00153D',
+          tint: '#E5F5FC',
+          border: '#009CDE',
         },
-        canvas: '#FAF9F8',
+        canvas: '#F7F8F9',
         surface: '#FFFFFF',
         stroke: {
-          DEFAULT: '#E1DFDD',
-          strong: '#8A8886',
-          subtle: '#EDEBE9',
+          DEFAULT: '#E1E3E5',
+          strong: '#888B8D',
+          subtle: '#ECEEEF',
         },
         ink: {
-          DEFAULT: '#242424',
-          secondary: '#605E5C',
-          disabled: '#A19F9D',
+          DEFAULT: '#1D2433',
+          secondary: '#5F6366',
+          disabled: '#A3A6A8',
         },
+        // Green / Harvest Amber / Signal Red, each deepened just enough to be
+        // legible as small text on white.
         status: {
-          good: '#107C10',
-          warn: '#C19C00',
-          bad: '#A4262C',
-          goodBg: '#F1FAF1',
-          warnBg: '#FFF9E6',
-          badBg: '#FDF3F4',
+          good: '#34842B',
+          warn: '#A87600',
+          bad: '#D0342C',
+          goodBg: '#EEF6ED',
+          warnBg: '#FEF6E0',
+          badBg: '#FBEDEC',
         },
       },
       fontSize: {

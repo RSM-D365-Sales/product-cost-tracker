@@ -23,7 +23,7 @@ out/                 generated CSVs (not committed — regenerate at will)
    ```
 
    Note the reconciliation block it prints — those are the numbers the
-   notebook must reproduce (F440: 55 receipts, avg landed ≈ 3.04, 4 open POs).
+   notebook must reproduce (RAW-BLU: 55 receipts, avg landed ≈ 3.02, 4 open POs).
 
 2. **Workspace + capacity.** Create a Fabric workspace on a trial capacity
    (60-day free) or a small F (F2) capacity. **Pause the capacity when not

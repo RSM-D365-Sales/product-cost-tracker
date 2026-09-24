@@ -31,7 +31,7 @@ import {
  * The BRIDGE sets what the posted runs actually cost against what today's BOM
  * and route say a unit should cost, by cost group — and each group opens up to
  * the component and operation lines behind it, which is where "packaging is
- * up" becomes "cans are up".
+ * up" becomes "cups are up".
  *
  * The RUN GRID hunts outliers. Its baseline is the runs' own quantity-weighted
  * average, not the calculation: material is priced at today's lots, so a

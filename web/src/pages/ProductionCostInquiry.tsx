@@ -48,7 +48,7 @@ import { PAGES, type PageId } from '../lib/route'
 import { analyseRunVariance } from '../lib/variance'
 import { productionNarrative } from '../lib/copilot'
 
-const COMPANY = import.meta.env.VITE_COMPANY ?? 'USMF'
+const COMPANY = import.meta.env.VITE_COMPANY ?? 'BSFP'
 const PAGE = PAGES.find((p) => p.id === 'production-cost')!
 
 /**

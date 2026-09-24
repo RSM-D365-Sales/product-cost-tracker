@@ -73,7 +73,7 @@ POST https://<env>/api/services/RSMProductCostServiceGroup/RSMProductCostInquiry
 Content-Type: application/json
 Authorization: Bearer <token>
 
-{ "_request": { "itemNumber": "F440", "daysBack": 365, "company": "USMF" } }
+{ "_request": { "itemNumber": "RAW-BLU", "daysBack": 365, "company": "BSFP" } }
 ```
 
 Point the proxy at it and switch the client over:

@@ -9,14 +9,17 @@ import { addDaysIso, isoOf, todayIso } from '../lib/format'
 import { dayNumber } from '../lib/trend'
 
 /**
- * Deterministic demo data for the mock provider — a food and beverage
- * manufacturer that buys bulk produce and dry commodities and packs them into
- * branded finished goods.
+ * Deterministic demo data for the mock provider — Bluestem Fresh Produce, a
+ * Grand Rapids grower-packer-shipper and fresh-cut processor (RSM's fictional
+ * IFPA demo company). Item numbers, names, sites, suppliers and growers come
+ * from the Bluestem company data pack (../Blustem-company-details); every
+ * figure is generated here.
  *
  * Two layers:
  *  1. ANCHOR rows — hand-authored so the headline numbers are stable and can be
  *     quoted in a demo script. Five purchase receipts of the two raw materials
- *     from R1002 Davis Enterprises into site 2 / warehouse 24, and five
+ *     from V3014 Ridgeview Produce Exchange — blueberries into the Hart packing
+ *     house, Honeycrisp apples into the Grand Rapids fresh-cut plant — and five
  *     production receipts of the two finished goods that consume those exact
  *     batches.
  *  2. Everything else is generated from a seeded PRNG, relative to today, so the
@@ -27,7 +30,7 @@ import { dayNumber } from '../lib/trend'
  * rows use absolute dates in early 2026 and therefore age; the generated rows
  * always sit in the trailing 24 months.
  *
- * The point the anchors make: all three avocado receipts land at the same $2.35
+ * The point the anchors make: all three blueberry receipts land at the same $2.35
  * FOB price, but at $2.77, $2.66 and $2.90 landed — and each finished-goods run
  * inherits the actual cost of the batch it consumed, which is what batch actual
  * costing does and what a standard cost would hide.
@@ -53,9 +56,9 @@ export interface CatalogItem extends ItemInfo {
   /** Typical FOB purchase price, before seasonal drift. Purchased items only. */
   basePurchasePrice?: number
   /**
-   * Charge families this item attracts on an inbound load. Avocados cross the
-   * border and need cold chain; domestic dry beans need neither but do get
-   * fumigated.
+   * Charge families this item attracts on an inbound load. Winter blueberries
+   * cross the Mexican border and need cold chain; Honeycrisp come out of
+   * controlled-atmosphere storage and carry a storage and handling charge.
    */
   chargeTags?: string[]
   /** `[min, max, step]` for a purchase order line. Defaults to bulk commodity volumes. */
@@ -87,6 +90,15 @@ export interface CatalogItem extends ItemInfo {
    * Quoted lead times live on the vendor records.
    */
   sourcing?: { vendorId: string; priceFactor: number }[]
+  /**
+   * Who actually supplies a background item. The vendor draw still runs over
+   * the whole list it is given, and its result is remapped onto these by
+   * index, so a clamshell comes from a packaging supplier and romaine from a
+   * grower without any PRNG draw being added or removed.
+   */
+  vendorIds?: string[]
+  /** Where a produced item is reported as finished when not at the co-packer. */
+  production?: { siteId: string; warehouseId: string }
   /** Raw material consumed, and how much of it per finished unit. */
   bom?: { itemNumber: string; quantityPer: number }
   /** Conversion cost components picked up by a production order. */
@@ -101,8 +113,8 @@ export interface CatalogItem extends ItemInfo {
  */
 export const FOCUS_ITEMS: CatalogItem[] = [
   {
-    itemNumber: 'F440',
-    productName: 'Bulk Avocados ORG 40',
+    itemNumber: 'RAW-BLU',
+    productName: 'Blueberries, bulk',
     unit: 'lb',
     currency: 'USD',
     // Every currentCost here sits deliberately a few percent under the
@@ -120,78 +132,89 @@ export const FOCUS_ITEMS: CatalogItem[] = [
     netWeight: 1,
     basePurchasePrice: 2.35,
     chargeTags: ['all', 'cold', 'import'],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
+    receiving: [{ siteId: 'HRT', warehouseId: 'HRT-RM' }],
     priceDriftPerYear: 0.11,
-    // Imported Hass supply thins out over late summer and price peaks with it.
-    // Kept modest on purpose: the seeded window spans ~23 months, so a large
-    // annual cycle lands on unmatched endpoints and tilts a straight-line fit
-    // enough to cancel the drift entirely. The background produce items carry
-    // the big swings instead, where a weak fit is a fair thing to show.
+    // Winter and spring volume comes up from Baja; the Michigan crop floods
+    // the market over late summer and the price softens with it. Kept modest
+    // on purpose: the seeded window spans ~23 months, so a large annual cycle
+    // lands on unmatched endpoints and tilts a straight-line fit enough to
+    // cancel the drift entirely. The background produce items carry the big
+    // swings instead, where a weak fit is a fair thing to show.
     seasonality: { amplitude: 0.05, peakMonth: 9 },
+    // Off-lead loads go to the two berry growers directly rather than landing
+    // on the apple grower in the vendor list. No premium: same fruit, same
+    // terms — this only keeps the vendor column honest.
+    sourcing: [
+      { vendorId: 'G2028', priceFactor: 1 },
+      { vendorId: 'G2030', priceFactor: 1 },
+    ],
   },
   {
-    itemNumber: 'RAW541',
-    productName: 'Raw Black Beans Bulk',
+    itemNumber: 'RAW-APL-HC',
+    productName: 'Apples, Honeycrisp, bulk',
     unit: 'lb',
     currency: 'USD',
     currentCost: 0.75,
     sellingPrice: 1.05,
-    itemGroupId: 'RM-Dry',
+    itemGroupId: 'RM-Produce',
     costingMethod: 'Batch actual cost',
     kind: 'raw',
     netWeight: 1,
     basePurchasePrice: 0.58,
-    chargeTags: ['all', 'dry'],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
+    chargeTags: ['all', 'stored'],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-RM' }],
     priceDriftPerYear: 0.07,
-    // Dry beans move on the autumn harvest, and far less than produce does.
+    // Storage fruit gets dearer as the CA rooms empty ahead of the new crop.
     seasonality: { amplitude: 0.03, peakMonth: 8 },
-    // Deliberately dual-sourced: Davis brokers the cheap 18-day rail pipeline
-    // and keeps the lead-vendor share; every non-Davis load is a Rio Grande
-    // truck — domestic stock in 5 days at roughly a 7% premium. The premium
-    // surfaces in the vendor column, the variance flags and the Copilot
-    // vendor-mix section; the lead times sit on the vendor records.
-    sourcing: [{ vendorId: 'R1024', priceFactor: 1.07 }],
+    // Deliberately dual-sourced: Ridgeview books the cheap fruit on an 18-day
+    // CA-room opening schedule and keeps the lead-vendor share; every other
+    // load is a Van Dyke truck off the Fruit Ridge — in 5 days at roughly a 7%
+    // premium. The premium surfaces in the vendor column, the variance flags
+    // and the Copilot vendor-mix section; the lead times sit on the vendor
+    // records.
+    sourcing: [{ vendorId: 'G2014', priceFactor: 1.07 }],
   },
   {
-    itemNumber: 'FG816',
-    productName: 'AVOCADO 40 4CT',
-    unit: 'ea',
+    itemNumber: 'PK-BLU-PINT',
+    productName: 'Blueberries pint clamshell',
+    unit: 'cs',
     currency: 'USD',
-    currentCost: 8.07,
-    sellingPrice: 10.95,
-    itemGroupId: 'FG-Fresh',
+    currentCost: 28.9,
+    sellingPrice: 37.5,
+    itemGroupId: 'FG-Packed',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    // Four size-40 avocados to a pack, ~0.625 lb each.
-    netWeight: 2.6,
-    bom: { itemNumber: 'F440', quantityPer: 2.5 },
+    // Twelve 12 oz pints to a case.
+    netWeight: 9.6,
+    bom: { itemNumber: 'RAW-BLU', quantityPer: 9 },
+    production: { siteId: 'HRT', warehouseId: 'HRT-FG' },
     conversion: [
-      { code: 'PACK', description: 'Packaging — net bag and tray', perUnit: 0.34 },
-      { code: 'LABOR', description: 'Direct labour — pack line', perUnit: 0.38 },
-      { code: 'OVHD', description: 'Production overhead', perUnit: 0.22 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.06 },
+      { code: 'PACK', description: 'Packaging — clamshells, label and case', perUnit: 1.4 },
+      { code: 'LABOR', description: 'Direct labour — sort and pack line', perUnit: 1.3 },
+      { code: 'OVHD', description: 'Production overhead', perUnit: 0.75 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.18 },
     ],
   },
   {
-    itemNumber: 'FG841',
-    productName: 'Canned Black Beans',
+    itemNumber: 'FC-APL-SLC-2OZ',
+    productName: 'Apple Slices 2 oz snack cup',
     unit: 'cs',
     currency: 'USD',
-    currentCost: 10.47,
-    sellingPrice: 16.95,
-    itemGroupId: 'FG-Canned',
+    currentCost: 6.55,
+    sellingPrice: 10.95,
+    itemGroupId: 'FG-FreshCut',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    // Case of 24 x 15.5 oz.
-    netWeight: 25,
-    bom: { itemNumber: 'RAW541', quantityPer: 6 },
+    // Case of 24 x 2 oz cups; 4 lb of whole fruit per case after coring.
+    netWeight: 3.4,
+    bom: { itemNumber: 'RAW-APL-HC', quantityPer: 4 },
+    production: { siteId: 'GRP', warehouseId: 'GRP-FG' },
     conversion: [
-      { code: 'CAN', description: 'Cans and ends', perUnit: 4.32 },
-      { code: 'LABEL', description: 'Labels and shipping cartons', perUnit: 0.48 },
-      { code: 'LABOR', description: 'Direct labour — soak, cook and fill', perUnit: 0.95 },
-      { code: 'OVHD', description: 'Production overhead — retort', perUnit: 0.55 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.1 },
+      { code: 'CUP', description: 'Cups and lids', perUnit: 1.15 },
+      { code: 'LABEL', description: 'Labels and shipping cases', perUnit: 0.72 },
+      { code: 'LABOR', description: 'Direct labour — wash, core, slice and fill', perUnit: 1.1 },
+      { code: 'OVHD', description: 'Production overhead — slicing line', perUnit: 0.7 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.12 },
     ],
   },
 ]
@@ -207,221 +230,232 @@ export const FOCUS_ITEMS: CatalogItem[] = [
  * or editing this list cannot move a single figure on the four focus items.
  */
 export const FILLER_ITEMS: CatalogItem[] = [
-  // --- Dry commodities -----------------------------------------------------
-  {
-    itemNumber: 'RAW512',
-    productName: 'Raw Pinto Beans Bulk',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 0.65,
-    sellingPrice: 0.98,
-    itemGroupId: 'RM-Dry',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 0.54,
-    chargeTags: ['all', 'dry'],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
-    priceDriftPerYear: 0.04,
-    seasonality: { amplitude: 0.05, peakMonth: 8 },
-  },
-  {
-    itemNumber: 'RAW566',
-    productName: 'Raw Chick Peas Bulk',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 0.88,
-    sellingPrice: 1.25,
-    itemGroupId: 'RM-Dry',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 0.71,
-    chargeTags: ['all', 'dry'],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
-    priceDriftPerYear: 0.07,
-    seasonality: { amplitude: 0.06, peakMonth: 7 },
-  },
-  {
-    itemNumber: 'RAW580',
-    productName: 'Long Grain White Rice Bulk',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 0.50,
-    sellingPrice: 0.78,
-    itemGroupId: 'RM-Dry',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 0.42,
-    chargeTags: ['all', 'dry'],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '3', warehouseId: '31' },
-    ],
-    priceDriftPerYear: 0.03,
-    seasonality: { amplitude: 0.04, peakMonth: 6 },
-  },
   // --- Produce -------------------------------------------------------------
   {
-    itemNumber: 'F410',
-    productName: 'Bulk Mangos ORG 12',
+    itemNumber: 'RAW-APL-GA',
+    productName: 'Apples, Gala, bulk',
     unit: 'lb',
     currency: 'USD',
-    currentCost: 1.98,
-    sellingPrice: 2.85,
+    currentCost: 0.46,
+    sellingPrice: 0.68,
     itemGroupId: 'RM-Produce',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 1.62,
-    chargeTags: ['all', 'cold', 'import'],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '2', warehouseId: '25' },
-    ],
-    priceDriftPerYear: 0.06,
-    seasonality: { amplitude: 0.16, peakMonth: 11 },
-  },
-  {
-    itemNumber: 'F460',
-    productName: 'Bulk Limes 200CT',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 1.16,
-    sellingPrice: 1.65,
-    itemGroupId: 'RM-Produce',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 0.88,
-    chargeTags: ['all', 'cold', 'import'],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '2', warehouseId: '25' },
-    ],
-    priceDriftPerYear: 0.12,
-    seasonality: { amplitude: 0.22, peakMonth: 5 },
-  },
-  // --- Ingredients ---------------------------------------------------------
-  {
-    itemNumber: 'ING220',
-    productName: 'Olive Oil Extra Virgin Bulk',
-    unit: 'gal',
-    currency: 'USD',
-    currentCost: 32.25,
-    sellingPrice: 44.0,
-    itemGroupId: 'RM-Ingredient',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 7.6,
-    basePurchasePrice: 24.5,
-    chargeTags: ['all', 'import'],
-    orderQty: [2_000, 9_000, 100],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
-    priceDriftPerYear: 0.14,
-    seasonality: { amplitude: 0.05, peakMonth: 10 },
-  },
-  {
-    itemNumber: 'ING305',
-    productName: 'Tomato Puree Bulk',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 0.45,
-    sellingPrice: 0.7,
-    itemGroupId: 'RM-Ingredient',
     costingMethod: 'Batch actual cost',
     kind: 'raw',
     netWeight: 1,
     basePurchasePrice: 0.38,
-    chargeTags: ['all'],
-    orderQty: [10_000, 40_000, 500],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
+    chargeTags: ['all', 'stored'],
+    receiving: [
+      { siteId: 'GRP', warehouseId: 'GRP-RM' },
+      { siteId: 'GRP', warehouseId: 'GRP-CS' },
+    ],
+    vendorIds: ['G2019', 'G2014', 'G2018'],
     priceDriftPerYear: 0.05,
-    seasonality: { amplitude: 0.07, peakMonth: 6 },
+    seasonality: { amplitude: 0.06, peakMonth: 7 },
   },
   {
-    itemNumber: 'ING410',
-    productName: 'Sea Salt Food Grade',
+    itemNumber: 'RAW-ROM',
+    productName: 'Romaine, bulk',
     unit: 'lb',
     currency: 'USD',
-    currentCost: 0.22,
-    sellingPrice: 0.35,
-    itemGroupId: 'RM-Ingredient',
+    currentCost: 0.66,
+    sellingPrice: 0.9,
+    itemGroupId: 'RM-Produce',
     costingMethod: 'Batch actual cost',
     kind: 'raw',
     netWeight: 1,
-    basePurchasePrice: 0.16,
-    chargeTags: ['all', 'dry'],
-    orderQty: [4_000, 20_000, 250],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
-    priceDriftPerYear: 0.02,
-  },
-  {
-    itemNumber: 'ING455',
-    productName: 'Adobo Seasoning Blend',
-    unit: 'lb',
-    currency: 'USD',
-    currentCost: 3.73,
-    sellingPrice: 5.4,
-    itemGroupId: 'RM-Ingredient',
-    costingMethod: 'Batch actual cost',
-    kind: 'raw',
-    netWeight: 1,
-    basePurchasePrice: 3.15,
-    chargeTags: ['all', 'import'],
-    orderQty: [1_500, 8_000, 100],
-    receiving: [{ siteId: '2', warehouseId: '24' }],
+    basePurchasePrice: 0.52,
+    chargeTags: ['all', 'cold'],
+    receiving: [
+      { siteId: 'SAL', warehouseId: 'SAL-XD' },
+      { siteId: 'GRP', warehouseId: 'GRP-RM' },
+    ],
+    vendorIds: ['G2026', 'G2027', 'G2001'],
     priceDriftPerYear: 0.08,
+    seasonality: { amplitude: 0.22, peakMonth: 11 },
   },
-  // --- Packaging -----------------------------------------------------------
   {
-    itemNumber: 'PKG101',
-    productName: 'Can 15.5 OZ with Ends',
+    itemNumber: 'RAW-CUC',
+    productName: 'Cucumbers, bulk',
+    unit: 'lb',
+    currency: 'USD',
+    currentCost: 0.41,
+    sellingPrice: 0.6,
+    itemGroupId: 'RM-Produce',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 1,
+    basePurchasePrice: 0.34,
+    chargeTags: ['all', 'cold', 'import'],
+    receiving: [
+      { siteId: 'GRP', warehouseId: 'GRP-RM' },
+      { siteId: 'SAL', warehouseId: 'SAL-XD' },
+    ],
+    vendorIds: ['G2028', 'G2004', 'G2021'],
+    priceDriftPerYear: 0.06,
+    seasonality: { amplitude: 0.18, peakMonth: 1 },
+  },
+  {
+    itemNumber: 'RAW-PEP',
+    productName: 'Bell Peppers, bulk',
+    unit: 'lb',
+    currency: 'USD',
+    currentCost: 0.98,
+    sellingPrice: 1.4,
+    itemGroupId: 'RM-Produce',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 1,
+    basePurchasePrice: 0.82,
+    chargeTags: ['all', 'cold', 'import'],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-RM' }],
+    vendorIds: ['G2029', 'G2010'],
+    priceDriftPerYear: 0.07,
+    seasonality: { amplitude: 0.16, peakMonth: 2 },
+  },
+  {
+    itemNumber: 'RAW-ASP',
+    productName: 'Asparagus, bulk',
+    unit: 'lb',
+    currency: 'USD',
+    currentCost: 1.94,
+    sellingPrice: 2.6,
+    itemGroupId: 'RM-Produce',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 1,
+    basePurchasePrice: 1.55,
+    chargeTags: ['all', 'cold'],
+    receiving: [
+      { siteId: 'HRT', warehouseId: 'HRT-RM' },
+      { siteId: 'GRP', warehouseId: 'GRP-RM' },
+    ],
+    vendorIds: ['G2005', 'G2007'],
+    priceDriftPerYear: 0.06,
+    seasonality: { amplitude: 0.2, peakMonth: 3 },
+  },
+  {
+    itemNumber: 'RAW-SQB',
+    productName: 'Butternut Squash, bulk',
+    unit: 'lb',
+    currency: 'USD',
+    currentCost: 0.33,
+    sellingPrice: 0.5,
+    itemGroupId: 'RM-Produce',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 1,
+    basePurchasePrice: 0.28,
+    chargeTags: ['all', 'stored'],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-CS' }],
+    vendorIds: ['G2024', 'G2004'],
+    priceDriftPerYear: 0.04,
+    seasonality: { amplitude: 0.1, peakMonth: 6 },
+  },
+  // --- Ingredients ---------------------------------------------------------
+  {
+    itemNumber: 'ING-ASCORB',
+    productName: 'Ascorbic/calcium anti-browning solution',
+    unit: 'dr',
+    currency: 'USD',
+    currentCost: 488.0,
+    sellingPrice: 650.0,
+    itemGroupId: 'RM-Ingredient',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 480,
+    basePurchasePrice: 395.0,
+    chargeTags: ['all'],
+    orderQty: [8, 40, 1],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-DS' }],
+    vendorIds: ['V3008'],
+    priceDriftPerYear: 0.09,
+  },
+  {
+    itemNumber: 'ING-DIP-RANCH',
+    productName: 'Ranch dip 1 oz cup',
     unit: 'ea',
     currency: 'USD',
     currentCost: 0.21,
-    sellingPrice: 0.28,
-    itemGroupId: 'PKG-Rigid',
-    costingMethod: 'Weighted avg.',
-    kind: 'packaging',
-    netWeight: 0.09,
-    basePurchasePrice: 0.17,
+    sellingPrice: 0.29,
+    itemGroupId: 'RM-Ingredient',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 0.07,
+    basePurchasePrice: 0.18,
     chargeTags: ['all'],
-    orderQty: [80_000, 400_000, 1_000],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '1', warehouseId: '12' },
-    ],
-    priceDriftPerYear: 0.10,
-  },
-  {
-    itemNumber: 'PKG210',
-    productName: 'Shipping Carton 24CT',
-    unit: 'ea',
-    currency: 'USD',
-    currentCost: 0.75,
-    sellingPrice: 1.05,
-    itemGroupId: 'PKG-Fibre',
-    costingMethod: 'Weighted avg.',
-    kind: 'packaging',
-    netWeight: 0.55,
-    basePurchasePrice: 0.62,
-    chargeTags: ['all'],
-    orderQty: [8_000, 40_000, 500],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '1', warehouseId: '12' },
-      { siteId: '3', warehouseId: '31' },
-    ],
+    orderQty: [20_000, 120_000, 1_000],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-RM' }],
+    vendorIds: ['V3007'],
     priceDriftPerYear: 0.06,
   },
   {
-    itemNumber: 'PKG305',
-    productName: 'Pressure Sensitive Label Roll',
+    itemNumber: 'ING-CAESAR-KIT',
+    productName: 'Caesar dressing + croutons kit',
     unit: 'ea',
     currency: 'USD',
-    currentCost: 17.70,
+    currentCost: 0.35,
+    sellingPrice: 0.48,
+    itemGroupId: 'RM-Ingredient',
+    costingMethod: 'Batch actual cost',
+    kind: 'raw',
+    netWeight: 0.12,
+    basePurchasePrice: 0.3,
+    chargeTags: ['all'],
+    orderQty: [10_000, 60_000, 500],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-RM' }],
+    vendorIds: ['V3007'],
+    priceDriftPerYear: 0.05,
+  },
+  // --- Packaging -----------------------------------------------------------
+  {
+    itemNumber: 'PKG-CUP-2OZ',
+    productName: '2 oz snack cup + lid',
+    unit: 'ea',
+    currency: 'USD',
+    currentCost: 0.05,
+    sellingPrice: 0.066,
+    itemGroupId: 'PKG-Rigid',
+    costingMethod: 'Weighted avg.',
+    kind: 'packaging',
+    netWeight: 0.01,
+    basePurchasePrice: 0.041,
+    chargeTags: ['all'],
+    orderQty: [100_000, 480_000, 5_000],
+    receiving: [
+      { siteId: 'GRP', warehouseId: 'GRP-DS' },
+      { siteId: 'HOL', warehouseId: 'HOL-STG' },
+    ],
+    vendorIds: ['V3001', 'V3002'],
+    priceDriftPerYear: 0.1,
+  },
+  {
+    itemNumber: 'PKG-CTN-RSC-24',
+    productName: 'Corrugated RSC 24-ct case',
+    unit: 'ea',
+    currency: 'USD',
+    currentCost: 0.68,
+    sellingPrice: 0.95,
+    itemGroupId: 'PKG-Fibre',
+    costingMethod: 'Weighted avg.',
+    kind: 'packaging',
+    netWeight: 0.6,
+    basePurchasePrice: 0.56,
+    chargeTags: ['all'],
+    orderQty: [8_000, 40_000, 500],
+    receiving: [
+      { siteId: 'GRP', warehouseId: 'GRP-DS' },
+      { siteId: 'HOL', warehouseId: 'HOL-STG' },
+      { siteId: 'HOL', warehouseId: 'HOL-CP' },
+    ],
+    vendorIds: ['V3003', 'V3001'],
+    priceDriftPerYear: 0.06,
+  },
+  {
+    itemNumber: 'PKG-LBL-CASE',
+    productName: 'Case labels, roll of 4,000',
+    unit: 'ea',
+    currency: 'USD',
+    currentCost: 17.1,
     sellingPrice: 24.0,
     itemGroupId: 'PKG-Label',
     costingMethod: 'Weighted avg.',
@@ -431,153 +465,214 @@ export const FILLER_ITEMS: CatalogItem[] = [
     chargeTags: ['all'],
     orderQty: [200, 1_200, 25],
     receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '1', warehouseId: '12' },
+      { siteId: 'GRP', warehouseId: 'GRP-DS' },
+      { siteId: 'HRT', warehouseId: 'HRT-DS' },
     ],
+    vendorIds: ['V3004'],
     priceDriftPerYear: 0.03,
   },
-  // Appended after the rest of the packaging block on purpose: the generator
-  // walks this array in order, so adding here leaves every item above it —
-  // PKG101 included — generating exactly the rows it generated before.
   {
-    itemNumber: 'PKG420',
-    productName: 'Avocado Net Bag 4CT',
+    itemNumber: 'PKG-CLAM-PINT',
+    productName: 'Pint clamshell PET',
     unit: 'ea',
     currency: 'USD',
-    currentCost: 0.14,
-    sellingPrice: 0.19,
+    currentCost: 0.056,
+    sellingPrice: 0.075,
+    itemGroupId: 'PKG-Rigid',
+    costingMethod: 'Weighted avg.',
+    kind: 'packaging',
+    netWeight: 0.03,
+    basePurchasePrice: 0.046,
+    chargeTags: ['all'],
+    orderQty: [100_000, 500_000, 5_000],
+    receiving: [
+      { siteId: 'HRT', warehouseId: 'HRT-DS' },
+      { siteId: 'HOL', warehouseId: 'HOL-CP' },
+    ],
+    vendorIds: ['V3002', 'V3001'],
+    priceDriftPerYear: 0.07,
+  },
+  {
+    itemNumber: 'PKG-CTN-RSC-12',
+    productName: 'Corrugated RSC 12-ct case',
+    unit: 'ea',
+    currency: 'USD',
+    currentCost: 0.6,
+    sellingPrice: 0.86,
+    itemGroupId: 'PKG-Fibre',
+    costingMethod: 'Weighted avg.',
+    kind: 'packaging',
+    netWeight: 0.55,
+    basePurchasePrice: 0.51,
+    chargeTags: ['all'],
+    orderQty: [8_000, 40_000, 500],
+    receiving: [
+      { siteId: 'HRT', warehouseId: 'HRT-DS' },
+      { siteId: 'HOL', warehouseId: 'HOL-CP' },
+    ],
+    vendorIds: ['V3003', 'V3001'],
+    priceDriftPerYear: 0.05,
+  },
+  {
+    itemNumber: 'PKG-POUCH-3LB',
+    productName: '3 lb apple pouch, printed',
+    unit: 'ea',
+    currency: 'USD',
+    currentCost: 0.09,
+    sellingPrice: 0.12,
     itemGroupId: 'PKG-Flexible',
     costingMethod: 'Weighted avg.',
     kind: 'packaging',
     netWeight: 0.02,
-    basePurchasePrice: 0.115,
+    basePurchasePrice: 0.075,
     chargeTags: ['all'],
-    orderQty: [40_000, 200_000, 1_000],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '3', warehouseId: '31' },
-    ],
-    priceDriftPerYear: 0.07,
+    orderQty: [60_000, 300_000, 5_000],
+    receiving: [{ siteId: 'HRT', warehouseId: 'HRT-DS' }],
+    vendorIds: ['V3001', 'V3005'],
+    priceDriftPerYear: 0.06,
   },
   {
-    itemNumber: 'PKG430',
-    productName: 'Produce Tray 4CT',
+    itemNumber: 'PKG-FILM-MAP',
+    productName: 'MAP film roll 12in',
     unit: 'ea',
     currency: 'USD',
-    currentCost: 0.16,
-    sellingPrice: 0.22,
-    itemGroupId: 'PKG-Fibre',
+    currentCost: 194.0,
+    sellingPrice: 255.0,
+    itemGroupId: 'PKG-Flexible',
     costingMethod: 'Weighted avg.',
     kind: 'packaging',
-    netWeight: 0.05,
-    basePurchasePrice: 0.13,
+    netWeight: 38,
+    basePurchasePrice: 165.0,
     chargeTags: ['all'],
-    orderQty: [30_000, 150_000, 1_000],
-    receiving: [
-      { siteId: '2', warehouseId: '24' },
-      { siteId: '3', warehouseId: '31' },
-    ],
-    priceDriftPerYear: 0.05,
+    orderQty: [20, 160, 5],
+    receiving: [{ siteId: 'GRP', warehouseId: 'GRP-DS' }],
+    vendorIds: ['V3005'],
+    priceDriftPerYear: 0.08,
   },
   // --- Produced ------------------------------------------------------------
   {
-    itemNumber: 'FG802',
-    productName: 'Canned Pinto Beans',
+    itemNumber: 'PK-APL-GA-3LB',
+    productName: 'Gala Apples 3 lb pouch',
     unit: 'cs',
     currency: 'USD',
-    currentCost: 9.92,
-    sellingPrice: 15.95,
-    itemGroupId: 'FG-Canned',
+    currentCost: 19.3,
+    sellingPrice: 26.5,
+    itemGroupId: 'FG-Packed',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    netWeight: 25,
-    bom: { itemNumber: 'RAW512', quantityPer: 6 },
+    netWeight: 37,
+    // Twelve 3 lb pouches.
+    bom: { itemNumber: 'RAW-APL-GA', quantityPer: 36 },
+    production: { siteId: 'HRT', warehouseId: 'HRT-FG' },
     conversion: [
-      { code: 'CAN', description: 'Cans and ends', perUnit: 4.32 },
-      { code: 'LABEL', description: 'Labels and shipping cartons', perUnit: 0.48 },
-      { code: 'LABOR', description: 'Direct labour — soak, cook and fill', perUnit: 0.92 },
-      { code: 'OVHD', description: 'Production overhead — retort', perUnit: 0.54 },
+      { code: 'PACK', description: 'Pouches and shipping case', perUnit: 1.55 },
+      { code: 'LABOR', description: 'Direct labour — apple pack line', perUnit: 1.2 },
+      { code: 'OVHD', description: 'Production overhead', perUnit: 0.85 },
       { code: 'QA', description: 'Quality and food safety', perUnit: 0.1 },
     ],
   },
   {
-    itemNumber: 'FG825',
-    productName: 'Canned Chick Peas',
+    itemNumber: 'PK-ASP-1LB',
+    productName: 'Asparagus 1 lb bunch',
     unit: 'cs',
     currency: 'USD',
-    currentCost: 10.89,
-    sellingPrice: 18.5,
-    itemGroupId: 'FG-Canned',
+    currentCost: 27.3,
+    sellingPrice: 36.0,
+    itemGroupId: 'FG-Packed',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    netWeight: 25,
-    bom: { itemNumber: 'RAW566', quantityPer: 6 },
+    netWeight: 11.5,
+    // Eleven 1 lb bunches, plus butt-end trim.
+    bom: { itemNumber: 'RAW-ASP', quantityPer: 11.5 },
+    production: { siteId: 'HRT', warehouseId: 'HRT-FG' },
     conversion: [
-      { code: 'CAN', description: 'Cans and ends', perUnit: 4.32 },
-      { code: 'LABEL', description: 'Labels and shipping cartons', perUnit: 0.48 },
-      { code: 'LABOR', description: 'Direct labour — soak, cook and fill', perUnit: 0.94 },
-      { code: 'OVHD', description: 'Production overhead — retort', perUnit: 0.55 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.1 },
+      { code: 'PACK', description: 'Bands, sleeves and shipping case', perUnit: 0.95 },
+      { code: 'LABOR', description: 'Direct labour — trim, bunch and pack', perUnit: 2.1 },
+      { code: 'OVHD', description: 'Production overhead', perUnit: 1.05 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.15 },
     ],
   },
   {
-    itemNumber: 'FG860',
-    productName: 'White Rice 5LB',
-    unit: 'ea',
-    currency: 'USD',
-    currentCost: 3.40,
-    sellingPrice: 4.95,
-    itemGroupId: 'FG-Dry',
-    costingMethod: 'Batch actual cost',
-    kind: 'finished',
-    netWeight: 5.2,
-    bom: { itemNumber: 'RAW580', quantityPer: 5 },
-    conversion: [
-      { code: 'PACK', description: 'Poly bag and handle', perUnit: 0.42 },
-      { code: 'LABOR', description: 'Direct labour — bagging line', perUnit: 0.26 },
-      { code: 'OVHD', description: 'Production overhead', perUnit: 0.18 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.04 },
-    ],
-  },
-  {
-    itemNumber: 'FG874',
-    productName: 'Mango Nectar 12CT',
+    itemNumber: 'PK-CUC-SLC',
+    productName: 'Slicer Cucumbers 24 ct',
     unit: 'cs',
     currency: 'USD',
-    currentCost: 13.20,
-    sellingPrice: 21.5,
-    itemGroupId: 'FG-Beverage',
+    currentCost: 10.1,
+    sellingPrice: 14.25,
+    itemGroupId: 'FG-Packed',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    netWeight: 15,
-    bom: { itemNumber: 'F410', quantityPer: 4 },
+    netWeight: 19.5,
+    bom: { itemNumber: 'RAW-CUC', quantityPer: 19 },
+    production: { siteId: 'GRP', warehouseId: 'GRP-FG' },
     conversion: [
-      { code: 'CAN', description: 'Cans and ends', perUnit: 2.88 },
-      { code: 'LABEL', description: 'Labels and shipping cartons', perUnit: 0.42 },
-      { code: 'LABOR', description: 'Direct labour — pulp, blend and fill', perUnit: 0.86 },
-      { code: 'OVHD', description: 'Production overhead — pasteuriser', perUnit: 0.62 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.09 },
+      { code: 'PACK', description: 'Wax and shipping case', perUnit: 0.8 },
+      { code: 'LABOR', description: 'Direct labour — grade and pack', perUnit: 0.95 },
+      { code: 'OVHD', description: 'Production overhead', perUnit: 0.7 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.08 },
     ],
   },
   {
-    itemNumber: 'FG892',
-    productName: 'Olive Oil 17 OZ',
-    unit: 'ea',
+    itemNumber: 'FC-SAL-ROM-CHOP',
+    productName: 'Chopped Romaine 2 lb foodservice',
+    unit: 'cs',
     currency: 'USD',
-    currentCost: 5.33,
-    sellingPrice: 8.95,
-    itemGroupId: 'FG-Ingredient',
+    currentCost: 14.8,
+    sellingPrice: 22.5,
+    itemGroupId: 'FG-FreshCut',
     costingMethod: 'Batch actual cost',
     kind: 'finished',
-    netWeight: 1.4,
-    // 17 fl oz is 0.133 of a US gallon.
-    bom: { itemNumber: 'ING220', quantityPer: 0.133 },
+    netWeight: 12.5,
+    // Six 2 lb bags, at an 80% core-and-trim yield.
+    bom: { itemNumber: 'RAW-ROM', quantityPer: 15 },
+    production: { siteId: 'GRP', warehouseId: 'GRP-FG' },
     conversion: [
-      { code: 'PACK', description: 'Bottle and closure', perUnit: 0.58 },
-      { code: 'LABEL', description: 'Labels and shipping cartons', perUnit: 0.11 },
-      { code: 'LABOR', description: 'Direct labour — fill line', perUnit: 0.22 },
-      { code: 'OVHD', description: 'Production overhead', perUnit: 0.16 },
-      { code: 'QA', description: 'Quality and food safety', perUnit: 0.03 },
+      { code: 'PACK', description: 'MAP bags and shipping case', perUnit: 1.1 },
+      { code: 'LABOR', description: 'Direct labour — core, chop, wash and bag', perUnit: 2.4 },
+      { code: 'OVHD', description: 'Production overhead — salad line', perUnit: 1.6 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.2 },
+    ],
+  },
+  {
+    itemNumber: 'FC-VEG-SQB-DICE',
+    productName: 'Diced Butternut Squash 12 oz',
+    unit: 'cs',
+    currency: 'USD',
+    currentCost: 8.7,
+    sellingPrice: 14.4,
+    itemGroupId: 'FG-FreshCut',
+    costingMethod: 'Batch actual cost',
+    kind: 'finished',
+    netWeight: 6.4,
+    // Eight 12 oz trays, at a two-thirds peel-and-seed yield.
+    bom: { itemNumber: 'RAW-SQB', quantityPer: 9 },
+    production: { siteId: 'GRP', warehouseId: 'GRP-FG' },
+    conversion: [
+      { code: 'PACK', description: 'Trays, film and shipping case', perUnit: 1.35 },
+      { code: 'LABOR', description: 'Direct labour — peel, seed and dice', perUnit: 2.6 },
+      { code: 'OVHD', description: 'Production overhead — dice line', perUnit: 1.7 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.18 },
+    ],
+  },
+  {
+    itemNumber: 'FC-PEP-DICE-5LB',
+    productName: 'Diced Peppers 5 lb foodservice',
+    unit: 'cs',
+    currency: 'USD',
+    currentCost: 27.5,
+    sellingPrice: 38.4,
+    itemGroupId: 'FG-FreshCut',
+    costingMethod: 'Batch actual cost',
+    kind: 'finished',
+    netWeight: 20.5,
+    // Four 5 lb bags, after coring and seeding.
+    bom: { itemNumber: 'RAW-PEP', quantityPer: 24 },
+    production: { siteId: 'GRP', warehouseId: 'GRP-FG' },
+    conversion: [
+      { code: 'PACK', description: 'Bags and shipping case', perUnit: 0.95 },
+      { code: 'LABOR', description: 'Direct labour — core, seed and dice', perUnit: 2.6 },
+      { code: 'OVHD', description: 'Production overhead — dice line', perUnit: 1.75 },
+      { code: 'QA', description: 'Quality and food safety', perUnit: 0.18 },
     ],
   },
 ]
@@ -586,45 +681,85 @@ export const FILLER_ITEMS: CatalogItem[] = [
 export const ITEMS: CatalogItem[] = [...FOCUS_ITEMS, ...FILLER_ITEMS]
 
 /**
- * R1002 Davis Enterprises is the primary supplier for both focus raw materials
- * and carries every anchor receipt; the rest exist so the vendor column varies
- * and the purchase-order lookup returns more than one name.
+ * V3014 Ridgeview Produce Exchange is the lead marketer for both focus raw
+ * materials and carries every anchor receipt; the growers exist so the vendor
+ * column varies and the purchase-order lookup returns more than one name.
+ * Grower accounts and names are Bluestem's own (growers.csv in the data pack).
  *
- * `leadTimeDays` is the vendor's quoted order-to-dock lead time. RAW541 is the
- * item that makes it interesting: Davis is cheapest but ships on an 18-day
- * pipeline, Rio Grande charges ~7% more and delivers in 5 — see the `sourcing`
- * mix on the RAW541 catalogue entry.
+ * `leadTimeDays` is the vendor's quoted order-to-dock lead time. RAW-APL-HC is
+ * the item that makes it interesting: Ridgeview is cheapest but books fruit on
+ * an 18-day CA-room schedule, Van Dyke charges ~7% more and delivers in 5 —
+ * see the `sourcing` mix on the RAW-APL-HC catalogue entry.
+ *
+ * Order matters: the lead vendor is first, and the focus pass draws a vendor
+ * by index into this list, so it must keep four entries.
  */
 export const VENDORS = [
-  { id: 'R1002', name: 'Davis Enterprises', leadTimeDays: 18 },
-  { id: 'R1017', name: 'Valle Verde Produce', leadTimeDays: 12 },
-  { id: 'R1024', name: 'Rio Grande Commodities', leadTimeDays: 5 },
-  { id: 'R1038', name: 'Harvest Ridge Growers', leadTimeDays: 9 },
+  { id: 'V3014', name: 'Ridgeview Produce Exchange', leadTimeDays: 18 },
+  { id: 'G2028', name: 'Baja Fresca S.A.', leadTimeDays: 12 },
+  { id: 'G2014', name: 'Van Dyke Vegetable Co.', leadTimeDays: 5 },
+  { id: 'G2030', name: 'Central Coast Berry Co.', leadTimeDays: 9 },
 ]
 
-/** Suppliers used only by the background items. */
+/** Suppliers and growers used only by the background items. */
 export const FILLER_VENDORS = [
-  { id: 'R1044', name: 'Delta Grain and Pulse', leadTimeDays: 11 },
-  { id: 'R1051', name: 'Mediterranean Oils SA', leadTimeDays: 32 },
-  { id: 'R1063', name: 'Atlantic Can and Closure', leadTimeDays: 21 },
-  { id: 'R1078', name: 'Summit Fibre Packaging', leadTimeDays: 8 },
-  { id: 'R1085', name: 'Casa Especias Trading', leadTimeDays: 26 },
+  { id: 'V3001', name: 'Great Lakes Packaging Corp', leadTimeDays: 5 },
+  { id: 'V3002', name: 'ClearPak Clamshells Inc.', leadTimeDays: 10 },
+  { id: 'V3003', name: 'Wolverine Corrugated', leadTimeDays: 10 },
+  { id: 'V3004', name: 'LabelWorks Midwest', leadTimeDays: 10 },
+  { id: 'V3005', name: 'FreshSeal Films', leadTimeDays: 14 },
+  { id: 'V3007', name: 'Prairie Foods Ingredients', leadTimeDays: 21 },
+  { id: 'V3008', name: 'NatureSafe Processing Aids', leadTimeDays: 14 },
+  { id: 'G2001', name: 'Vander Molen Farms', leadTimeDays: 3 },
+  { id: 'G2004', name: 'Hillcrest Family Farms', leadTimeDays: 3 },
+  { id: 'G2005', name: 'DeBoer Asparagus Co.', leadTimeDays: 2 },
+  { id: 'G2007', name: 'Sunny Ridge Growers', leadTimeDays: 3 },
+  { id: 'G2010', name: 'Oceana Fresh Farms', leadTimeDays: 3 },
+  { id: 'G2018', name: 'Pine Grove Produce', leadTimeDays: 6 },
+  { id: 'G2019', name: 'North Branch Farms', leadTimeDays: 4 },
+  { id: 'G2021', name: 'Evergreen Valley Growers', leadTimeDays: 3 },
+  { id: 'G2024', name: 'Stone Barn Vegetables', leadTimeDays: 4 },
+  { id: 'G2026', name: 'Salinas Valley Greens', leadTimeDays: 6 },
+  { id: 'G2027', name: 'Yuma Sun Farms', leadTimeDays: 5 },
+  { id: 'G2029', name: 'Sinaloa Verde Produce', leadTimeDays: 9 },
 ]
 
+const ALL_VENDORS = [...VENDORS, ...FILLER_VENDORS]
+
+function vendorById(id: string): { id: string; name: string } {
+  return ALL_VENDORS.find((v) => v.id === id)!
+}
+
+/** Bluestem's four sites (sites.csv in the data pack). */
 export const SITES = [
-  { id: '1', name: 'Distribution center' },
-  { id: '2', name: 'Food processing plant' },
-  { id: '3', name: 'Co-pack facility' },
+  { id: 'GRP', name: 'Grand Rapids Fresh-Cut Plant' },
+  { id: 'HRT', name: 'Hart Packing House' },
+  { id: 'HOL', name: 'Holland Distribution Center' },
+  { id: 'SAL', name: 'Salinas Consolidation Hub' },
 ]
 
 export const WAREHOUSES = [
-  { id: '11', siteId: '1', name: 'DC finished goods' },
-  { id: '12', siteId: '1', name: 'DC staging' },
-  { id: '24', siteId: '2', name: 'Raw material receiving' },
-  { id: '25', siteId: '2', name: 'Cold storage' },
-  { id: '26', siteId: '2', name: 'Finished goods' },
-  { id: '31', siteId: '3', name: 'Co-pack inventory' },
+  { id: 'GRP-RM', siteId: 'GRP', name: 'Raw receiving cooler' },
+  { id: 'GRP-CS', siteId: 'GRP', name: 'CA storage' },
+  { id: 'GRP-DS', siteId: 'GRP', name: 'Dry and packaging stores' },
+  { id: 'GRP-FG', siteId: 'GRP', name: 'Finished goods cooler' },
+  { id: 'HRT-RM', siteId: 'HRT', name: 'Raw receiving cooler' },
+  { id: 'HRT-DS', siteId: 'HRT', name: 'Dry and packaging stores' },
+  { id: 'HRT-FG', siteId: 'HRT', name: 'Finished goods cooler' },
+  { id: 'HOL-FG', siteId: 'HOL', name: 'DC finished goods' },
+  { id: 'HOL-STG', siteId: 'HOL', name: 'DC staging' },
+  { id: 'HOL-CP', siteId: 'HOL', name: 'Co-pack cooler' },
+  { id: 'SAL-XD', siteId: 'SAL', name: 'Cross-dock cooler' },
 ]
+
+/**
+ * Where the contract packer in the Holland DC reports finished goods. About a
+ * fifth of produced volume runs there rather than in house.
+ */
+const COPACK = { siteId: 'HOL', warehouseId: 'HOL-CP' }
+
+/** Receiving point for an item with none configured. */
+const DEFAULT_RECEIVING = { siteId: 'GRP', warehouseId: 'GRP-RM' }
 
 export const LOCATIONS = [
   'RECV-01',
@@ -638,7 +773,7 @@ export const LOCATIONS = [
 
 /** Where an inbound item is put away — produce cold, packaging by itself, rest dry. */
 function receivingLocations(item: CatalogItem): string[] {
-  if (item.chargeTags?.includes('cold')) return ['COLD-01', 'COLD-02', 'RECV-01']
+  if (item.itemGroupId === 'RM-Produce') return ['COLD-01', 'COLD-02', 'RECV-01']
   if (item.kind === 'packaging') return ['PKG-01', 'DRY-02', 'RECV-01']
   return ['DRY-01', 'DRY-02', 'RECV-01']
 }
@@ -657,15 +792,15 @@ interface ChargeSpec {
 }
 
 const CHARGE_CATALOG: ChargeSpec[] = [
-  { code: 'FREIGHT', description: 'Inbound freight', allocationMethod: 'Net weight', rate: 0.115, tag: 'all' },
+  { code: 'FREIGHT', description: 'Inbound reefer freight', allocationMethod: 'Net weight', rate: 0.115, tag: 'all' },
   { code: 'FUEL', description: 'Fuel surcharge', allocationMethod: 'Net weight', rate: 0.022, tag: 'all' },
-  { code: 'PALLET', description: 'Pallets and dunnage', allocationMethod: 'Quantity', rate: 0.012, tag: 'all' },
+  { code: 'PALLET', description: 'CHEP pallets and dunnage', allocationMethod: 'Quantity', rate: 0.012, tag: 'all' },
   { code: 'INSPECT', description: 'USDA inspection and grading', allocationMethod: 'Equally', rate: 0.008, tag: 'all' },
   { code: 'DEMUR', description: 'Detention and demurrage', allocationMethod: 'Equally', rate: 0.014, tag: 'all' },
-  { code: 'PRECOOL', description: 'Pre-cooling and cold chain', allocationMethod: 'Quantity', rate: 0.03, tag: 'cold' },
+  { code: 'PRECOOL', description: 'Forced-air pre-cooling and cold chain', allocationMethod: 'Quantity', rate: 0.03, tag: 'cold' },
   { code: 'BROKER', description: 'Customs brokerage', allocationMethod: 'Equally', rate: 0.01, tag: 'import' },
-  { code: 'DUTY', description: 'Import duty', allocationMethod: 'Net amount', rate: 0.028, tag: 'import' },
-  { code: 'FUMIG', description: 'Fumigation and treatment', allocationMethod: 'Net weight', rate: 0.016, tag: 'dry' },
+  { code: 'CUSTOMS', description: 'Border crossing and customs fees', allocationMethod: 'Net amount', rate: 0.028, tag: 'import' },
+  { code: 'CASTOR', description: 'CA storage and handling', allocationMethod: 'Net weight', rate: 0.016, tag: 'stored' },
 ]
 
 const chargeSpec = (code: string): ChargeSpec =>
@@ -700,7 +835,7 @@ const round = (value: number, dp = 2): number => {
 
 /**
  * Food-industry lot code: item, two-digit year, day of year, then a letter for
- * the nth lot of that item on that day. Reading `F440-26061A` off the grid tells
+ * the nth lot of that item on that day. Reading `RAW-BLU-26061A` off the grid tells
  * a plant operator exactly which delivery it was.
  *
  * `reserved` primes the per-day counters with the hand-authored anchor batches,
@@ -749,9 +884,11 @@ function lotIssuer(
 // ---------------------------------------------------------------------------
 
 /**
- * Five purchase receipts from R1002 Davis Enterprises into site 2 / warehouse
- * 24. Extended charge amounts are chosen so the per-unit add-on cost lands on a
- * round figure: F440 at $0.42, $0.31 and $0.55; RAW541 at $0.14 and $0.19.
+ * Five purchase receipts from V3014 Ridgeview Produce Exchange — the
+ * blueberries into Hart (HRT / HRT-RM), the Honeycrisp into Grand Rapids
+ * (GRP / GRP-RM). Extended charge amounts are chosen so the per-unit add-on
+ * cost lands on a round figure: RAW-BLU at $0.42, $0.31 and $0.55; RAW-APL-HC
+ * at $0.14 and $0.19.
  */
 const PURCHASE_ANCHORS: {
   item: string
@@ -765,11 +902,11 @@ const PURCHASE_ANCHORS: {
   charges: [string, number][]
 }[] = [
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000241',
     receipt: 'PR-104812',
     date: '2026-03-02',
-    batch: 'F440-26061A',
+    batch: 'RAW-BLU-26061A',
     location: 'COLD-01',
     qty: 42_000,
     fob: 2.35,
@@ -778,15 +915,15 @@ const PURCHASE_ANCHORS: {
       ['FREIGHT', 11_340.0],
       ['PRECOOL', 3_360.0],
       ['BROKER', 1_260.0],
-      ['DUTY', 1_680.0],
+      ['CUSTOMS', 1_680.0],
     ],
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000258',
     receipt: 'PR-105196',
     date: '2026-04-13',
-    batch: 'F440-26103A',
+    batch: 'RAW-BLU-26103A',
     location: 'COLD-02',
     qty: 38_000,
     fob: 2.35,
@@ -795,57 +932,57 @@ const PURCHASE_ANCHORS: {
       ['FREIGHT', 7_600.0],
       ['PRECOOL', 2_280.0],
       ['BROKER', 950.0],
-      ['DUTY', 950.0],
+      ['CUSTOMS', 950.0],
     ],
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000273',
     receipt: 'PR-105644',
     date: '2026-05-18',
-    batch: 'F440-26138A',
+    batch: 'RAW-BLU-26138A',
     location: 'COLD-01',
     qty: 40_000,
     fob: 2.35,
-    // The load that sat at the port: demurrage alone adds $0.06/lb.
+    // The load held at the Otay Mesa crossing: demurrage alone adds $0.06/lb.
     // 14,000 + 3,200 + 1,200 + 2,400 + 1,200 = 22,000 over 40,000 lb -> 0.55/lb
     charges: [
       ['FREIGHT', 14_000.0],
       ['PRECOOL', 3_200.0],
       ['BROKER', 1_200.0],
       ['DEMUR', 2_400.0],
-      ['DUTY', 1_200.0],
+      ['CUSTOMS', 1_200.0],
     ],
   },
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     po: 'PO-000249',
     receipt: 'PR-104980',
     date: '2026-03-24',
-    batch: 'RAW541-26083A',
-    location: 'DRY-01',
+    batch: 'RAW-APL-HC-26083A',
+    location: 'COLD-02',
     qty: 44_000,
     fob: 0.58,
     // 4,400 + 880 + 880 = 6,160 over 44,000 lb -> 0.14/lb
     charges: [
       ['FREIGHT', 4_400.0],
-      ['FUMIG', 880.0],
+      ['CASTOR', 880.0],
       ['PALLET', 880.0],
     ],
   },
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     po: 'PO-000269',
     receipt: 'PR-105432',
     date: '2026-05-05',
-    batch: 'RAW541-26125A',
-    location: 'DRY-02',
+    batch: 'RAW-APL-HC-26125A',
+    location: 'COLD-01',
     qty: 40_000,
     fob: 0.58,
     // 5,600 + 800 + 800 + 400 = 7,600 over 40,000 lb -> 0.19/lb
     charges: [
       ['FREIGHT', 5_600.0],
-      ['FUMIG', 800.0],
+      ['CASTOR', 800.0],
       ['PALLET', 800.0],
       ['DEMUR', 400.0],
     ],
@@ -854,9 +991,9 @@ const PURCHASE_ANCHORS: {
 
 /**
  * Five production receipts. `material` is the BOM quantity multiplied by the
- * actual landed cost of `sourceBatch` — so FG816 costs $7.93, $7.62 and $8.29
- * across three otherwise identical runs purely because the avocados behind them
- * landed at $2.77, $2.66 and $2.90.
+ * actual landed cost of `sourceBatch` — so a case of PK-BLU-PINT costs $28.56,
+ * $27.48 and $29.86 across three otherwise similar runs, mostly because the
+ * 9 lb of blueberries behind each case landed at $2.77, $2.66 and $2.90.
  */
 const PRODUCTION_ANCHORS: {
   item: string
@@ -873,100 +1010,101 @@ const PRODUCTION_ANCHORS: {
   conversion: [string, number][]
 }[] = [
   {
-    item: 'FG816',
+    item: 'PK-BLU-PINT',
     order: 'P000318',
     journal: 'PJ-000318',
     date: '2026-03-09',
-    batch: 'FG816-26068A',
-    sourceItem: 'F440',
-    sourceBatch: 'F440-26061A',
-    siteId: '2',
-    warehouseId: '26',
-    qty: 12_400,
-    material: 6.93, // 2.5 lb x $2.77
+    batch: 'PK-BLU-PINT-26068A',
+    sourceItem: 'RAW-BLU',
+    sourceBatch: 'RAW-BLU-26061A',
+    siteId: 'HRT',
+    warehouseId: 'HRT-FG',
+    qty: 3_400,
+    material: 24.93, // 9 lb x $2.77
     conversion: [
-      ['PACK', 0.34],
-      ['LABOR', 0.38],
-      ['OVHD', 0.22],
-      ['QA', 0.06],
+      ['PACK', 1.4],
+      ['LABOR', 1.3],
+      ['OVHD', 0.75],
+      ['QA', 0.18],
     ],
   },
   {
-    item: 'FG816',
+    item: 'PK-BLU-PINT',
     order: 'P000341',
     journal: 'PJ-000341',
     date: '2026-04-20',
-    batch: 'FG816-26110A',
-    sourceItem: 'F440',
-    sourceBatch: 'F440-26103A',
-    siteId: '2',
-    warehouseId: '26',
-    qty: 11_200,
-    material: 6.65, // 2.5 lb x $2.66
+    batch: 'PK-BLU-PINT-26110A',
+    sourceItem: 'RAW-BLU',
+    sourceBatch: 'RAW-BLU-26103A',
+    siteId: 'HRT',
+    warehouseId: 'HRT-FG',
+    qty: 3_100,
+    material: 23.94, // 9 lb x $2.66
     conversion: [
-      ['PACK', 0.34],
-      ['LABOR', 0.36],
-      ['OVHD', 0.21],
-      ['QA', 0.06],
+      ['PACK', 1.4],
+      ['LABOR', 1.24],
+      ['OVHD', 0.72],
+      ['QA', 0.18],
     ],
   },
   {
-    item: 'FG816',
+    // Packed by the contract packer in the Holland DC.
+    item: 'PK-BLU-PINT',
     order: 'P000369',
     journal: 'PJ-000369',
     date: '2026-05-26',
-    batch: 'FG816-26146A',
-    sourceItem: 'F440',
-    sourceBatch: 'F440-26138A',
-    siteId: '3',
-    warehouseId: '31',
-    qty: 12_000,
-    material: 7.25, // 2.5 lb x $2.90
+    batch: 'PK-BLU-PINT-26146A',
+    sourceItem: 'RAW-BLU',
+    sourceBatch: 'RAW-BLU-26138A',
+    siteId: 'HOL',
+    warehouseId: 'HOL-CP',
+    qty: 3_300,
+    material: 26.1, // 9 lb x $2.90
     conversion: [
-      ['PACK', 0.35],
-      ['LABOR', 0.4],
-      ['OVHD', 0.23],
-      ['QA', 0.06],
+      ['PACK', 1.44],
+      ['LABOR', 1.36],
+      ['OVHD', 0.78],
+      ['QA', 0.18],
     ],
   },
   {
-    item: 'FG841',
+    item: 'FC-APL-SLC-2OZ',
     order: 'P000327',
     journal: 'PJ-000327',
     date: '2026-03-31',
-    batch: 'FG841-26090A',
-    sourceItem: 'RAW541',
-    sourceBatch: 'RAW541-26083A',
-    siteId: '2',
-    warehouseId: '26',
-    qty: 5_600,
-    material: 4.32, // 6 lb x $0.72
+    batch: 'FC-APL-SLC-2OZ-26090A',
+    sourceItem: 'RAW-APL-HC',
+    sourceBatch: 'RAW-APL-HC-26083A',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    qty: 8_400,
+    material: 2.88, // 4 lb x $0.72
     conversion: [
-      ['CAN', 4.32],
-      ['LABEL', 0.48],
-      ['LABOR', 0.95],
-      ['OVHD', 0.55],
-      ['QA', 0.1],
+      ['CUP', 1.15],
+      ['LABEL', 0.72],
+      ['LABOR', 1.1],
+      ['OVHD', 0.7],
+      ['QA', 0.12],
     ],
   },
   {
-    item: 'FG841',
+    item: 'FC-APL-SLC-2OZ',
     order: 'P000358',
     journal: 'PJ-000358',
     date: '2026-05-12',
-    batch: 'FG841-26132A',
-    sourceItem: 'RAW541',
-    sourceBatch: 'RAW541-26125A',
-    siteId: '2',
-    warehouseId: '26',
-    qty: 5_200,
-    material: 4.62, // 6 lb x $0.77
+    batch: 'FC-APL-SLC-2OZ-26132A',
+    sourceItem: 'RAW-APL-HC',
+    sourceBatch: 'RAW-APL-HC-26125A',
+    siteId: 'GRP',
+    warehouseId: 'GRP-FG',
+    qty: 7_800,
+    material: 3.08, // 4 lb x $0.77
     conversion: [
-      ['CAN', 4.44],
-      ['LABEL', 0.48],
-      ['LABOR', 0.98],
-      ['OVHD', 0.57],
-      ['QA', 0.1],
+      ['CUP', 1.18],
+      ['LABEL', 0.72],
+      ['LABOR', 1.14],
+      ['OVHD', 0.72],
+      ['QA', 0.12],
     ],
   },
 ]
@@ -995,10 +1133,10 @@ function buildPurchaseAnchors(): ReceiptRow[] {
       receiptDate: a.date,
       itemNumber: item.itemNumber,
       productName: item.productName,
-      vendorAccount: 'R1002',
-      vendorName: 'Davis Enterprises',
-      siteId: '2',
-      warehouseId: '24',
+      vendorAccount: VENDORS[0].id,
+      vendorName: VENDORS[0].name,
+      siteId: item.receiving![0].siteId,
+      warehouseId: item.receiving![0].warehouseId,
       locationId: a.location,
       batchNumber: a.batch,
       quantityReceived: a.qty,
@@ -1020,14 +1158,14 @@ function buildPurchaseAnchors(): ReceiptRow[] {
  * inquiry has live inventory to plan against.
  *
  * The generated receipts are spread over a 24-month window, so at any moment
- * roughly one of them falls inside a 21-day avocado shelf life — not enough to
+ * roughly one of them falls inside a 21-day blueberry shelf life — not enough to
  * plan a week of production from. These are hand-authored instead, staggered
  * across the expiry window so the plan has a genuine FEFO ordering to work out,
  * and priced on the same upward trend the generated receipts follow so they do
  * not distort the cost trend chart.
  *
  * `daysAgo` drives both the receipt date and, via the item's shelf life, the
- * expiry date. F440's first lot is deliberately sized so that it CANNOT be
+ * expiry date. RAW-BLU's first lot is deliberately sized so that it CANNOT be
  * consumed before it expires on the default two committed lines — enabling the
  * co-packer in the parameters is what clears it. That is the demo.
  *
@@ -1045,9 +1183,9 @@ const INBOUND_ANCHORS: {
   /** Physical quantity still on hand today. */
   onHand: number
 }[] = [
-  // --- F440 Bulk Avocados, 21-day shelf life -------------------------------
+  // --- RAW-BLU Blueberries, 21-day shelf life --------------------------------
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     daysAgo: 20,
     location: 'COLD-01',
     qty: 62_000,
@@ -1056,12 +1194,12 @@ const INBOUND_ANCHORS: {
       ['FREIGHT', 0.25],
       ['PRECOOL', 0.07],
       ['BROKER', 0.025],
-      ['DUTY', 0.045],
+      ['CUSTOMS', 0.045],
     ],
     onHand: 62_000,
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     daysAgo: 14,
     location: 'COLD-01',
     qty: 38_000,
@@ -1070,12 +1208,12 @@ const INBOUND_ANCHORS: {
       ['FREIGHT', 0.215],
       ['PRECOOL', 0.06],
       ['BROKER', 0.022],
-      ['DUTY', 0.043],
+      ['CUSTOMS', 0.043],
     ],
     onHand: 38_000,
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     daysAgo: 9,
     location: 'COLD-02',
     qty: 44_000,
@@ -1084,12 +1222,12 @@ const INBOUND_ANCHORS: {
       ['FREIGHT', 0.29],
       ['PRECOOL', 0.078],
       ['BROKER', 0.037],
-      ['DUTY', 0.045],
+      ['CUSTOMS', 0.045],
     ],
     onHand: 44_000,
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     daysAgo: 4,
     location: 'COLD-02',
     qty: 34_000,
@@ -1098,12 +1236,12 @@ const INBOUND_ANCHORS: {
       ['FREIGHT', 0.19],
       ['PRECOOL', 0.055],
       ['BROKER', 0.017],
-      ['DUTY', 0.038],
+      ['CUSTOMS', 0.038],
     ],
     onHand: 34_000,
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     daysAgo: 1,
     location: 'COLD-01',
     qty: 40_000,
@@ -1112,37 +1250,37 @@ const INBOUND_ANCHORS: {
       ['FREIGHT', 0.255],
       ['PRECOOL', 0.072],
       ['BROKER', 0.028],
-      ['DUTY', 0.045],
+      ['CUSTOMS', 0.045],
     ],
     onHand: 40_000,
   },
-  // --- RAW541 Raw Black Beans, 2-year shelf life ---------------------------
-  // Nothing here is close to expiring; the contrast with the avocados is the
-  // point. Dry goods are constrained by how much you have, produce by how long
-  // you have to use it.
+  // --- RAW-APL-HC Honeycrisp, 120 days out of CA storage ---------------------
+  // Nothing here is close to expiring; the contrast with the blueberries is
+  // the point. Storage apples are constrained by how much you have, berries by
+  // how long you have to use them.
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     daysAgo: 40,
-    location: 'DRY-01',
+    location: 'COLD-02',
     qty: 96_000,
     fob: 0.66, // + 0.13 = 0.79 landed
     charges: [
       ['FREIGHT', 0.085],
-      ['FUMIG', 0.021],
+      ['CASTOR', 0.021],
       ['PALLET', 0.012],
       ['INSPECT', 0.012],
     ],
     onHand: 74_000,
   },
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     daysAgo: 12,
-    location: 'DRY-02',
+    location: 'COLD-01',
     qty: 120_000,
     fob: 0.68, // + 0.14 = 0.82 landed
     charges: [
       ['FREIGHT', 0.092],
-      ['FUMIG', 0.022],
+      ['CASTOR', 0.022],
       ['PALLET', 0.013],
       ['INSPECT', 0.013],
     ],
@@ -1183,10 +1321,10 @@ function buildInboundAnchors(today: string): ReceiptRow[] {
       receiptDate,
       itemNumber: item.itemNumber,
       productName: item.productName,
-      vendorAccount: 'R1002',
-      vendorName: 'Davis Enterprises',
-      siteId: '2',
-      warehouseId: '24',
+      vendorAccount: VENDORS[0].id,
+      vendorName: VENDORS[0].name,
+      siteId: item.receiving![0].siteId,
+      warehouseId: item.receiving![0].warehouseId,
       locationId: a.location,
       batchNumber: inboundBatch(a, today),
       quantityReceived: a.qty,
@@ -1235,7 +1373,7 @@ export function explicitOnHand(): Map<string, number> {
 const EXPECTED_ORDERS: {
   item: string
   po: string
-  /** Vendor account. Defaults to the lead broker R1002 Davis Enterprises. */
+  /** Vendor account. Defaults to the lead marketer V3014 Ridgeview Produce Exchange. */
   vendorId?: string
   /** Confirmed delivery, days after today. */
   daysOut: number
@@ -1244,9 +1382,9 @@ const EXPECTED_ORDERS: {
   /** Per unit, estimated. */
   charges: [string, number][]
 }[] = [
-  // --- F440 Bulk Avocados: one load roughly every six days -----------------
+  // --- RAW-BLU Blueberries: one load roughly every six days ------------------
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000920',
     daysOut: 5,
     qty: 40_000,
@@ -1255,11 +1393,11 @@ const EXPECTED_ORDERS: {
       ['FREIGHT', 0.25],
       ['PRECOOL', 0.07],
       ['BROKER', 0.026],
-      ['DUTY', 0.044],
+      ['CUSTOMS', 0.044],
     ],
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000926',
     daysOut: 11,
     qty: 44_000,
@@ -1268,11 +1406,11 @@ const EXPECTED_ORDERS: {
       ['FREIGHT', 0.26],
       ['PRECOOL', 0.072],
       ['BROKER', 0.026],
-      ['DUTY', 0.045],
+      ['CUSTOMS', 0.045],
     ],
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000931',
     daysOut: 17,
     qty: 42_000,
@@ -1281,11 +1419,11 @@ const EXPECTED_ORDERS: {
       ['FREIGHT', 0.265],
       ['PRECOOL', 0.073],
       ['BROKER', 0.027],
-      ['DUTY', 0.045],
+      ['CUSTOMS', 0.045],
     ],
   },
   {
-    item: 'F440',
+    item: 'RAW-BLU',
     po: 'PO-000938',
     daysOut: 24,
     qty: 46_000,
@@ -1294,49 +1432,49 @@ const EXPECTED_ORDERS: {
       ['FREIGHT', 0.27],
       ['PRECOOL', 0.074],
       ['BROKER', 0.027],
-      ['DUTY', 0.046],
+      ['CUSTOMS', 0.046],
     ],
   },
-  // --- RAW541 Raw Black Beans: two broker loads and one spot top-up --------
-  // PO-000946 is the dual-sourcing story in one row: Rio Grande delivers in
-  // 4 days at a fob ~7% over the Davis loads either side of it. Same beans,
-  // different pipeline — the premium is the price of speed.
+  // --- RAW-APL-HC Honeycrisp: two CA-room loads and one spot top-up ----------
+  // PO-000946 is the dual-sourcing story in one row: Van Dyke delivers in
+  // 4 days at a fob ~7% over the Ridgeview loads either side of it. Same
+  // apples, different pipeline — the premium is the price of speed.
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     po: 'PO-000946',
-    vendorId: 'R1024',
+    vendorId: 'G2014',
     daysOut: 4,
     qty: 60_000,
     fob: 0.74,
     charges: [
       ['FREIGHT', 0.085],
-      ['FUMIG', 0.021],
+      ['CASTOR', 0.021],
       ['PALLET', 0.013],
       ['INSPECT', 0.012],
     ],
   },
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     po: 'PO-000944',
     daysOut: 9,
     qty: 100_000,
     fob: 0.67,
     charges: [
       ['FREIGHT', 0.09],
-      ['FUMIG', 0.022],
+      ['CASTOR', 0.022],
       ['PALLET', 0.013],
       ['INSPECT', 0.012],
     ],
   },
   {
-    item: 'RAW541',
+    item: 'RAW-APL-HC',
     po: 'PO-000949',
     daysOut: 21,
     qty: 120_000,
     fob: 0.69,
     charges: [
       ['FREIGHT', 0.092],
-      ['FUMIG', 0.022],
+      ['CASTOR', 0.022],
       ['PALLET', 0.013],
       ['INSPECT', 0.013],
     ],
@@ -1380,8 +1518,8 @@ export function expectedRows(today: string = todayIso()): ReceiptRow[] {
       productName: item.productName,
       vendorAccount: vendor.id,
       vendorName: vendor.name,
-      siteId: '2',
-      warehouseId: '24',
+      siteId: item.receiving![0].siteId,
+      warehouseId: item.receiving![0].warehouseId,
       quantityReceived: e.qty,
       unit: item.unit,
       currency: item.currency,
@@ -1452,8 +1590,8 @@ interface DraftLine {
  * Builds one purchase order and emits a receipt row per line.
  *
  * A load usually carries two lots of the same commodity and occasionally mixes
- * both raw materials, because Davis Enterprises brokers produce and dry goods
- * alike. Header charges are allocated across ALL lines of the order, which is
+ * both raw materials on one consolidated reefer, because Ridgeview markets
+ * berries and apples alike. Header charges are allocated across ALL lines of the order, which is
  * what makes the per-unit add-on cost move between receipts of the same item at
  * the same FOB price — a second, larger lot on the order dilutes the first one's
  * share.
@@ -1472,15 +1610,20 @@ function buildPurchaseOrder(
   years: number,
 ): ReceiptRow[] {
   // The lead vendor carries most of the volume.
-  const drawn =
-    rnd() < 0.68 ? vendors[0] : vendors[1 + Math.floor(rnd() * (vendors.length - 1))]
+  const drawnIndex =
+    rnd() < 0.68 ? 0 : 1 + Math.floor(rnd() * (vendors.length - 1))
+  // A background item with its own supplier list takes the draw by index, so
+  // the packaging comes from a packaging supplier — a remap, not a new draw.
+  const drawn = primary.vendorIds
+    ? vendorById(primary.vendorIds[drawnIndex % primary.vendorIds.length])
+    : vendors[drawnIndex]
 
   // An item with a sourcing mix funnels its non-lead volume to the mix's named
   // alternates instead of scattering it across the whole vendor list — every
-  // non-Davis load of RAW541 is a Rio Grande truck, not whichever broker the
-  // draw happened to land on. The funnelling is a pure remap: it consumes no
-  // PRNG draws and changes no dates, quantities or draw-derived prices, so no
-  // other item's generated figures move (verify.mjs holds either way).
+  // non-Ridgeview load of RAW-APL-HC is a Van Dyke truck, not whichever grower
+  // the draw happened to land on. The funnelling is a pure remap: it consumes
+  // no PRNG draws and changes no dates, quantities or draw-derived prices, so
+  // no other item's generated figures move (verify.mjs holds either way).
   let vendor = drawn
   if (primary.sourcing?.length && drawn.id !== vendors[0].id) {
     const alt =
@@ -1607,9 +1750,9 @@ function buildPurchaseOrder(
   }
 
   // One delivery point per order, taken from the item that drove it. A single
-  // configured option is used as-is rather than drawn for, so the two focus raw
-  // materials always land in site 2 / warehouse 24 without touching the PRNG.
-  const recvOptions = primary.receiving ?? [{ siteId: '2', warehouseId: '24' }]
+  // configured option is used as-is rather than drawn for, so each focus raw
+  // material always lands in its one receiving cooler without touching the PRNG.
+  const recvOptions = primary.receiving ?? [DEFAULT_RECEIVING]
   const recv =
     recvOptions.length === 1
       ? recvOptions[0]
@@ -1617,6 +1760,11 @@ function buildPurchaseOrder(
 
   return lines.map((l, idx) => {
     const locations = receivingLocations(l.item)
+    // A rider line with exactly one receiving point of its own is delivered
+    // there (a line-level delivery address), so a blueberry lot consolidated
+    // onto an apple load still lands at Hart. No draw: single options only.
+    const lineRecv =
+      idx > 0 && l.item.receiving?.length === 1 ? l.item.receiving[0] : recv
     return costRow({
       sourceType: 'Purchase',
       purchaseOrderNumber: poNumber,
@@ -1627,8 +1775,8 @@ function buildPurchaseOrder(
       productName: l.item.productName,
       vendorAccount: vendor.id,
       vendorName: vendor.name,
-      siteId: recv.siteId,
-      warehouseId: recv.warehouseId,
+      siteId: lineRecv.siteId,
+      warehouseId: lineRecv.warehouseId,
       locationId: locations[Math.floor(rnd() * locations.length)],
       batchNumber: lot(l.item.itemNumber, receiptDate),
       quantityReceived: l.quantity,
@@ -1681,6 +1829,7 @@ function buildProductionOrder(
 
   // A fifth of the volume is packed at the co-packer rather than in house.
   const atCopacker = rnd() < 0.2
+  const home = item.production ?? { siteId: 'GRP', warehouseId: 'GRP-FG' }
 
   return costRow({
     sourceType: 'Production',
@@ -1692,8 +1841,8 @@ function buildProductionOrder(
     productName: item.productName,
     vendorAccount: '',
     vendorName: '',
-    siteId: atCopacker ? '3' : '2',
-    warehouseId: atCopacker ? '31' : '26',
+    siteId: atCopacker ? COPACK.siteId : home.siteId,
+    warehouseId: atCopacker ? COPACK.warehouseId : home.warehouseId,
     locationId: 'FG-01',
     batchNumber: lot(item.itemNumber, receiptDate),
     sourceItemNumber: source.itemNumber,
@@ -1849,7 +1998,7 @@ export function seedRows(): ReceiptRow[] {
     26,
     20,
     // The anchor receipts are real inventory too — a production run may consume
-    // one, which is exactly what the FG816 anchors do.
+    // one, which is exactly what the PK-BLU-PINT anchors do.
     purchaseAnchors,
   )
 

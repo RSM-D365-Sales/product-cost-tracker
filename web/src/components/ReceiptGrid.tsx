@@ -105,7 +105,7 @@ export function ReceiptGrid({
       {
         key: 'item',
         header: 'Item',
-        width: '90px',
+        width: '130px',
         sortValue: (r) => r.itemNumber,
         render: (r) => (
           <DrillLink

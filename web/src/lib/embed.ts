@@ -1,18 +1,19 @@
 /**
- * Whether the app draws its own "Finance and Operations" navigation bar.
+ * Whether the app is embedded — i.e. whether it should leave out its own
+ * bluestem title ribbon ("Finance and Operations" bar).
  *
- * It does NOT by default: this workspace is built to be embedded inside a real
- * Dynamics 365 Finance and Supply Chain environment (iframe / website host
- * control), where the host already has that bar and two of them reads as a
- * mockup. For a standalone demo outside D365, `?embed=0` restores the full
- * chrome — banner, page search, and the navigation pane.
+ * It is NOT embedded by default: the bluestem brand guide requires the RSM
+ * sponsor mark, which lives on the ribbon, on every app. When the page is
+ * hosted inside a real Dynamics 365 Finance and Supply Chain environment
+ * (iframe / website host control), the host already has a bar and two of them
+ * reads as a mockup, so `?embed=1` drops it.
  *
  * Resolution order, first hit wins:
- *   1. `?embed=0` / `?embed=1` in the query string (survives hash navigation):
- *      `.../index.html?embed=0#/product-cost`
- *   2. The same among the hash parameters: `#/product-cost?embed=0`
+ *   1. `?embed=1` / `?embed=0` in the query string (survives hash navigation):
+ *      `.../index.html?embed=1#/product-cost`
+ *   2. The same among the hash parameters: `#/product-cost?embed=1`
  *   3. `VITE_EMBED` in web/.env, to fix a build one way or the other.
- *   4. Embedded (bar hidden).
+ *   4. Standalone (ribbon shown).
  *
  * Latched once at module load. The hash form is therefore sticky for the
  * session even though in-app navigation rewrites the hash parameters.
@@ -38,7 +39,7 @@ function resolveEmbedded(): boolean {
   const fromHash =
     q >= 0 ? asFlag(new URLSearchParams(hash.slice(q + 1)).get('embed')) : undefined
 
-  return fromSearch ?? fromHash ?? asFlag(import.meta.env.VITE_EMBED) ?? true
+  return fromSearch ?? fromHash ?? asFlag(import.meta.env.VITE_EMBED) ?? false
 }
 
 export const isEmbedded = resolveEmbedded()

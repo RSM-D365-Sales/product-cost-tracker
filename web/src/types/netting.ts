@@ -33,7 +33,7 @@ export interface DemandLine {
   id: string
   /** Planned order reference, e.g. PP-000112. */
   reference: string
-  /** What the demand feeds, e.g. "FG816 AVOCADO 40 4CT — planned production". */
+  /** What the demand feeds, e.g. "PK-BLU-PINT Blueberries pint clamshell — planned production". */
   description: string
   requiredDate: string
   quantity: number
