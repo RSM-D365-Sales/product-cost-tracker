@@ -5,7 +5,12 @@ import { IconChevronDown, IconChevronRight, IconSpinner } from './Icons'
 export interface Column<T> {
   key: string
   header: string
-  /** Any CSS width; the table is fixed-layout so these are respected. */
+  /**
+   * Preferred CSS width. The table is auto-layout, so this is a floor rather
+   * than a cap: a cell whose content is wider (a long batch id, a product
+   * name) pushes the column out and the grid scrolls sideways instead of
+   * letting the text spill into the next cell.
+   */
   width?: string
   align?: 'left' | 'right' | 'center'
   render: (row: T) => ReactNode
@@ -86,7 +91,7 @@ export function Grid<T>({
   return (
     <div className="border border-stroke bg-surface">
       <div className="overflow-auto" style={{ maxHeight }}>
-        <table className="f-grid" style={{ tableLayout: 'fixed' }}>
+        <table className="f-grid" style={{ tableLayout: 'auto', minWidth: '100%' }}>
           <colgroup>
             {onSelect ? <col style={{ width: '44px' }} /> : null}
             {renderDetail ? <col style={{ width: '30px' }} /> : null}
