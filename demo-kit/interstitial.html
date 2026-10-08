@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Product Cost Tracker · Up next</title>
+<!--
+  Title card shown between clips in the IFPA booth loop (10–15 s).
+
+  Open it in a browser, or let demo-kit/record.mjs render it to video.
+  Query parameters:
+    ?dur=12        seconds until the progress bar completes (default 12)
+    ?next=Label    clip name under "Up next" (default Product Cost Tracker)
+    ?tagline=…     line under the clip name
+    ?eyebrow=…     company · site line, top right
+    ?pipe=…        the five pipeline boxes, as Name|detail~Name|detail~… (the last is the D365 box)
+    ?loop=1        restart when the bar completes (hold the final frame otherwise)
+    ?manual=1      don't auto-start; the recorder calls window.__startTimeline()
+    ?static=1      everything at rest, no animation (same as prefers-reduced-motion)
+
+  The layout, motion and timing are the same card used by every Bluestem booth
+  kit, so the loop reads as one reel; only the labels above differ per app.
+  record.mjs passes them from scenes.mjs. The defaults below are this app's.
+
+  Brand: BRAND_GUIDE.md "video title cards" — Midnight ground, wordmark white/green
+  on dark, RSM "Powered by" mark bottom-right. Single dark theme by design.
+  Fonts and the RSM mark are local files in ./assets so the card works offline.
+-->
+<style>
+  /* Layout: a fixed 1920×1080 stage, scaled to fit whatever window shows it.
+     Logo top-left, "Up next" headline centre-left, the dock-to-plan pipeline as
+     the one drawn element, progress + RSM mark along the bottom. */
+  @font-face { font-family: 'Poppins'; font-weight: 600; font-display: swap; src: url('assets/poppins-600.woff2') format('woff2'); }
+  @font-face { font-family: 'Poppins'; font-weight: 500; font-display: swap; src: url('assets/poppins-500.woff2') format('woff2'); }
+
+  :root {
+    color-scheme: dark;
+    --midnight: #00153D;      /* ground */
+    --surface: #0B2454;       /* pipeline nodes */
+    --line: rgba(255,255,255,.14);
+    --blue: #009CDE;          /* RSM Blue: accent, progress, the "blue" in bluestem */
+    --green: #3F9C35;         /* leaf, the "stem" on dark */
+    --d365: #3A4FA8;          /* Lifted Midnight: the D365 side of the pipeline */
+    --text: #FFFFFF;
+    --text-2: #C9D1DB;
+    --text-3: #9FB0CC;
+    --font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+    --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --dur: 12s;
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--midnight); color: var(--text); font-family: var(--font-body); overflow: hidden; }
+
+  .stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    transform-origin: 0 0; padding: 112px 120px 96px; box-sizing: border-box;
+    display: grid; grid-template-rows: auto 1fr auto auto; row-gap: 0;
+    background:
+      radial-gradient(1200px 700px at 18% 0%, rgba(0,156,222,.16), transparent 60%),
+      var(--midnight);
+  }
+
+  /* --- header row --------------------------------------------------------- */
+  .head { display: flex; align-items: center; justify-content: space-between; }
+  .lockup { display: flex; align-items: center; gap: 18px; }
+  .lockup svg { width: 76px; height: 76px; display: block; }
+  .wordmark { font-family: var(--font-display); font-weight: 600; font-size: 60px; letter-spacing: -.01em; line-height: 1; }
+  .wordmark .stem { color: var(--green); }
+  .eyebrow { font-size: 18px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+
+  /* --- headline ----------------------------------------------------------- */
+  .hero { align-self: center; display: grid; row-gap: 14px; max-width: 1400px; }
+  .next { font-size: 22px; letter-spacing: .18em; text-transform: uppercase; color: var(--blue); display: flex; align-items: center; gap: 16px; }
+  .next::before { content: ''; width: 44px; height: 3px; background: var(--blue); border-radius: 2px; }
+  h1 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 136px; line-height: .98; letter-spacing: -.02em; text-wrap: balance; }
+  .tagline { margin: 10px 0 0; font-family: var(--font-display); font-weight: 500; font-size: 46px; color: var(--text-2); letter-spacing: -.005em; }
+
+  /* --- pipeline ----------------------------------------------------------- */
+  .pipe { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); column-gap: 28px; align-items: stretch; margin-bottom: 64px; }
+  .pipe svg.rail { position: absolute; left: 0; right: 0; top: 50%; height: 40px; width: 100%; transform: translateY(-50%); pointer-events: none; overflow: visible; }
+  .node { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px 24px; min-height: 118px; box-sizing: border-box; display: grid; align-content: start; row-gap: 6px; }
+  .node .n { font-family: var(--font-display); font-weight: 500; font-size: 25px; line-height: 1.15; letter-spacing: -.005em; }
+  .node .d { font-size: 16.5px; color: var(--text-3); line-height: 1.35; }
+  .node.d365 { background: var(--d365); border-color: transparent; }
+  .node.d365 .d { color: #DCE1F7; }
+  .node.d365 .n { color: #fff; }
+  .link { position: absolute; top: 50%; right: -28px; width: 28px; height: 2px; background: var(--blue); transform: translateY(-50%); }
+  .link.both::before, .link.both::after { content: ''; position: absolute; top: -5px; border: 6px solid transparent; }
+  .link.both::before { left: -4px; border-right-color: var(--blue); border-left: 0; }
+  .link.both::after { right: -4px; border-left-color: var(--blue); border-right: 0; }
+  .link::after { content: ''; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left-color: var(--blue); border-right: 0; }
+  /* inbound only: the inquiry reads from D365 and posts nothing back */
+  .link.in::after { display: none; }
+  .link.in::before { content: ''; position: absolute; left: -4px; top: -5px; border: 6px solid transparent; border-right-color: var(--blue); border-left: 0; }
+  .odata { position: absolute; z-index: 2; right: -59px; top: calc(50% - 34px); width: 90px; text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--blue); white-space: nowrap; }
+
+  /* --- footer ------------------------------------------------------------- */
+  .foot { display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 80px; }
+  .progress { display: grid; row-gap: 14px; }
+  .meta { display: flex; justify-content: space-between; font-size: 17px; color: var(--text-3); letter-spacing: .04em; }
+  .meta b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .track { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .fill { height: 100%; width: 0; background: var(--blue); border-radius: 3px; }
+  .rsm { display: flex; align-items: center; gap: 14px; color: var(--text-2); font-size: 16px; }
+  .rsm img { height: 32px; width: auto; display: block; }
+
+  /* --- motion ------------------------------------------------------------- */
+  .a { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1); }
+  .stage.run .a { opacity: 1; transform: none; }
+  .stage.run .a[data-at="1"] { transition-delay: .25s }
+  .stage.run .a[data-at="2"] { transition-delay: .55s }
+  .stage.run .a[data-at="3"] { transition-delay: .85s }
+  .stage.run .a[data-at="4"] { transition-delay: 1.25s }
+  .stage.run .a[data-at="5"] { transition-delay: 2.0s }
+  .stage.run .a[data-at="6"] { transition-delay: 2.45s }
+  .stage.run .a[data-at="7"] { transition-delay: 2.9s }
+  .stage.run .a[data-at="8"] { transition-delay: 3.35s }
+  .stage.run .a[data-at="9"] { transition-delay: 3.8s }
+  .stage.run .a[data-at="10"] { transition-delay: 4.3s }
+  .link, .odata { opacity: 0; transition: opacity .4s ease; }
+  .stage.run .link, .stage.run .odata { opacity: 1; }
+  .stage.run .node:nth-child(1) .link { transition-delay: 2.3s }
+  .stage.run .node:nth-child(2) .link { transition-delay: 2.75s }
+  .stage.run .node:nth-child(3) .link { transition-delay: 3.2s }
+  .stage.run .node:nth-child(4) .link, .stage.run .node:nth-child(4) .odata { transition-delay: 3.7s }
+  .stage.run .fill { animation: grow var(--dur) linear forwards; }
+  @keyframes grow { from { width: 0 } to { width: 100% } }
+
+  .stage.static .a, .stage.static .link, .stage.static .odata { opacity: 1; transform: none; transition: none; }
+  .stage.static .fill { animation: none; width: 100%; }
+  @media (prefers-reduced-motion: reduce) {
+    .a, .link, .odata { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="head">
+    <div class="lockup a" data-at="0">
+      <svg viewBox="40 30 200 220" aria-hidden="true">
+        <path d="M62 232 Q75 150 150 130" stroke="#009CDE" stroke-width="26" stroke-linecap="round" fill="none"/>
+        <g transform="translate(155 108) rotate(-45)">
+          <path d="M-72 0 C-40 -50 40 -50 72 0 C40 50 -40 50 -72 0 Z" fill="#3F9C35"/>
+          <path d="M-45 0 L45 0" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+        </g>
+      </svg>
+      <div class="wordmark" aria-label="bluestem">blue<span class="stem">stem</span></div>
+    </div>
+    <div class="eyebrow a" data-at="1" id="eyebrow">Bluestem Fresh Produce · Hart Packing House · Site HRT</div>
+  </div>
+
+  <div class="hero">
+    <div class="next a" data-at="2">Up next</div>
+    <h1 class="a" data-at="3" id="title">Product Cost Tracker</h1>
+    <p class="tagline a" data-at="4" id="tagline">What’s it cost? Ask once, get the whole crate.</p>
+  </div>
+
+  <div class="pipe" id="pipe" aria-label="Dock to plan: purchase receipts, landed cost, batches on hand, production plan, read from Dynamics 365">
+    <div class="node a" data-at="5"><div class="n">Purchase Receipts</div><div class="d">FOB price plus allocated charges</div><div class="link"></div></div>
+    <div class="node a" data-at="6"><div class="n">Landed Cost</div><div class="d">Variance · trend · open POs</div><div class="link"></div></div>
+    <div class="node a" data-at="7"><div class="n">Batches On Hand</div><div class="d">Valued at landed cost, first-expired-first-out</div><div class="link"></div></div>
+    <div class="node a" data-at="8"><div class="n">Production Plan</div><div class="d">Every run costed at the lots it consumes</div><div class="link in"></div><div class="odata">OData v4</div></div>
+    <div class="node d365 a" data-at="9"><div class="n">Dynamics 365 F&amp;SC</div><div class="d">Receipts · charges · BOMs · routes · on-hand</div></div>
+  </div>
+
+  <div class="foot">
+    <div class="progress a" data-at="2">
+      <div class="meta"><span>Next clip in <b id="count">12</b> s</span><span>IFPA 2026 · Orlando</span></div>
+      <div class="track"><div class="fill" id="fill"></div></div>
+    </div>
+    <div class="rsm a" data-at="1"><span>Powered by</span><img src="assets/rsm-logo-white.png" alt="RSM"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const dur = Math.max(3, Number(q.get('dur')) || 12);
+  const next = q.get('next');
+  const loop = q.get('loop') === '1';
+  const manual = q.get('manual') === '1';
+  const reduced = q.get('static') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const stage = document.getElementById('stage');
+  const count = document.getElementById('count');
+  const title = document.getElementById('title');
+  if (next) title.textContent = next;
+  const setText = (id, v) => { if (v) document.getElementById(id).textContent = v; };
+  setText('tagline', q.get('tagline'));
+  setText('eyebrow', q.get('eyebrow'));
+  (q.get('pipe') || '').split('~').filter(Boolean).forEach((part, i) => {
+    const node = document.querySelectorAll('#pipe .node')[i];
+    if (!node) return;
+    const [n, d] = part.split('|');
+    node.querySelector('.n').textContent = n;
+    node.querySelector('.d').textContent = d || '';
+  });
+
+  // A long clip name steps down in size until it sits on one line of the hero.
+  const fitTitle = () => {
+    title.style.whiteSpace = 'nowrap';
+    title.style.fontSize = '';
+    let size = 136;
+    while (title.scrollWidth > 1400 && size > 88) title.style.fontSize = (size -= 4) + 'px';
+    if (title.scrollWidth > 1400) title.style.whiteSpace = '';
+  };
+  fitTitle();
+  document.documentElement.style.setProperty('--dur', dur + 's');
+
+  // fit the 1920×1080 stage to the window
+  const fit = () => {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+  };
+  addEventListener('resize', fit); fit();
+
+  let timer = null;
+  function start() {
+    clearInterval(timer);
+    fitTitle();   // again now the webfont has loaded
+    stage.classList.remove('run', 'static');
+    // restart the CSS animations
+    void stage.offsetWidth;
+    stage.classList.add(reduced ? 'static' : 'run');
+    const t0 = performance.now();
+    count.textContent = dur;
+    timer = setInterval(() => {
+      const left = Math.max(0, dur - (performance.now() - t0) / 1000);
+      count.textContent = Math.ceil(left);
+      if (left <= 0) {
+        clearInterval(timer);
+        dispatchEvent(new CustomEvent('demo:done'));
+        if (loop) setTimeout(start, 400);
+      }
+    }, 100);
+  }
+  window.__startTimeline = start;
+  if (!manual) {
+    const go = () => setTimeout(start, 50);
+    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(go, go);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Product Cost Tracker Cheat Sheet</title>
+<!--
+  Presenter cheat sheet for the Bluestem Product Cost Tracker demo (IFPA booth).
+  Self-contained: fonts and the RSM mark are local files in ./assets. Prints to three
+  Letter pages. Numbers quoted here were read from the running app (seed in
+  web/src/data/seed.ts); if the app shows different figures, trust the app and update this.
+-->
+<style>
+  /* Layout: one reading column (~70ch) with a wide "click path" table that is the
+     working part of the page. Brand tokens from BRAND_GUIDE.md / web/tailwind.config.js. */
+  @font-face { font-family: 'Poppins'; font-weight: 600; font-display: swap; src: url('assets/poppins-600.woff2') format('woff2'); }
+  @font-face { font-family: 'Poppins'; font-weight: 500; font-display: swap; src: url('assets/poppins-500.woff2') format('woff2'); }
+
+  :root {
+    color-scheme: light;
+    --bg: #FFFFFF;
+    --bg-2: #F2F3F4;            /* Fog */
+    --surface: #FFFFFF;
+    --ink: #00153D;             /* Midnight */
+    --ink-2: #33415C;
+    --muted: #5E6C86;
+    --line: #D8DEE8;
+    --accent: #009CDE;          /* RSM Blue */
+    --accent-ink: #00739F;      /* AA on white */
+    --sky: #E5F5FC;
+    --green: #3F9C35;
+    --amber: #B57E00;
+    --amber-bg: #FFF8E1;
+    --red: #D0342C;
+    --red-bg: #FDECEA;
+    --d365: #3A4FA8;
+    --d365-bg: #EEF0F9;
+    --logo-light: inline-block;
+    --logo-dark: none;
+    --font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+    --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: Consolas, 'Cascadia Mono', ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #00153D; --bg-2: #0B2454; --surface: #0B2454; --ink: #FFFFFF; --ink-2: #DCE3EE; --muted: #9FB0CC;
+      --line: rgba(255,255,255,.14); --accent: #009CDE; --accent-ink: #4FC3F7; --sky: rgba(0,156,222,.16);
+      --green: #6FC265; --amber: #F2A900; --amber-bg: rgba(242,169,0,.14); --red: #FF7B72; --red-bg: rgba(208,52,44,.18);
+      --d365: #8FA0E8; --d365-bg: rgba(58,79,168,.25); --logo-light: none; --logo-dark: inline-block;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #00153D; --bg-2: #0B2454; --surface: #0B2454; --ink: #FFFFFF; --ink-2: #DCE3EE; --muted: #9FB0CC;
+    --line: rgba(255,255,255,.14); --accent: #009CDE; --accent-ink: #4FC3F7; --sky: rgba(0,156,222,.16);
+    --green: #6FC265; --amber: #F2A900; --amber-bg: rgba(242,169,0,.14); --red: #FF7B72; --red-bg: rgba(208,52,44,.18);
+    --d365: #8FA0E8; --d365-bg: rgba(58,79,168,.25); --logo-light: none; --logo-dark: inline-block;
+  }
+
+  * { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { margin: 0; background: var(--bg); color: var(--ink-2); font-family: var(--font-body); line-height: 1.5; padding-block: 0 48px; padding-inline: 20px; }
+  .page { max-width: 1040px; margin: 0 auto; display: grid; row-gap: 36px; }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 600; color: var(--ink); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+  h1 { font-size: 2rem; line-height: 1.15; }
+  h2 { font-size: 1.25rem; line-height: 1.25; display: flex; align-items: center; gap: 12px; }
+  h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  h3 { font-size: 1rem; }
+  p { margin: 0; max-width: 72ch; }
+  a { color: var(--accent-ink); }
+  code { font-family: var(--font-mono); font-size: .9em; background: var(--bg-2); padding: .05em .35em; border-radius: 4px; color: var(--ink); }
+  .eyebrow { font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  section { display: grid; row-gap: 16px; }
+
+  /* header */
+  header { border-bottom: 1px solid var(--line); padding-block: 28px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; }
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .lockup svg { width: 44px; height: 44px; flex: none; }
+  .wordmark { font-family: var(--font-display); font-weight: 600; font-size: 1.7rem; line-height: 1; color: var(--accent); }
+  .wordmark .stem { color: var(--ink); }
+  .title { display: grid; row-gap: 4px; }
+  .rsm { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .8rem; }
+  .rsm img { height: 22px; width: auto; display: var(--logo-light); }
+  .rsm img.dark { display: var(--logo-dark); }
+
+  /* at-a-glance grid */
+  .glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .glance div { background: var(--bg-2); border-radius: 10px; padding: 12px 14px; display: grid; row-gap: 2px; }
+  .glance .k { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .glance .v { color: var(--ink); font-weight: 600; font-size: .95rem; line-height: 1.3; }
+  .glance .v small { display: block; font-weight: 400; color: var(--muted); font-size: .8rem; }
+
+  /* checklist */
+  .check { list-style: none; margin: 0; padding: 0; display: grid; row-gap: 10px; max-width: 80ch; }
+  .check li { position: relative; padding-left: 34px; }
+  .check li::before { content: ''; position: absolute; left: 0; top: 3px; width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; box-sizing: border-box; }
+  .warn { border-left: 4px solid var(--amber); background: var(--amber-bg); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 80ch; }
+  .warn b { color: var(--ink); }
+
+  /* click path */
+  .path { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  .path th { text-align: left; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
+  .path td { padding: 14px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .path tr:last-child td { border-bottom: 0; }
+  .path .n { font-family: var(--font-display); font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; width: 2.2rem; padding-right: 0; }
+  .path .where { width: 15rem; }
+  .path .where b { color: var(--ink); display: block; font-weight: 600; }
+  .path .where span { color: var(--muted); font-size: .85rem; }
+  .path ul { margin: 0; padding-left: 1.1rem; display: grid; row-gap: 3px; }
+  .path .say { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--ink); font-style: italic; }
+  .pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; line-height: 1.6; vertical-align: 1px; }
+  .pill.ok { background: rgba(63,156,53,.14); color: var(--green); }
+  .pill.warn { background: var(--amber-bg); color: var(--amber); border-left: 0; padding: 0 8px; border-radius: 999px; max-width: none; }
+  .pill.bad { background: var(--red-bg); color: var(--red); }
+  .pill.d365 { background: var(--d365-bg); color: var(--d365); }
+  .table-wrap { overflow-x: auto; }
+  .vo td.t { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; }
+  .vo td.narr { font-size: 1rem; color: var(--ink); line-height: 1.45; }
+  .vo td.w { white-space: nowrap; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .vo .scene b { color: var(--ink); display: block; }
+  .vo .scene span { color: var(--muted); font-size: .85rem; }
+
+  /* cast / ids */
+  .cast { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px 36px; }
+  .cast dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; row-gap: 6px; font-size: .9rem; }
+  .cast dt { color: var(--muted); }
+  .cast dd { margin: 0; color: var(--ink); }
+  .cast dd code { font-size: .82em; }
+
+  /* Q&A */
+  .qa { display: grid; row-gap: 14px; max-width: 80ch; }
+  .qa div { display: grid; row-gap: 4px; }
+  .qa .q { font-weight: 600; color: var(--ink); }
+
+  /* loop */
+  .loop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: .9rem; }
+  .loop span { background: var(--bg-2); border-radius: 8px; padding: 8px 12px; color: var(--ink); }
+  .loop span.card { background: var(--ink); color: #fff; }
+  .loop i { color: var(--muted); font-style: normal; }
+
+  .asof { font-size: .85rem; color: var(--muted); }
+  .path td.fig b { font-variant-numeric: tabular-nums; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: .82rem; color: var(--muted); }
+
+  @media (max-width: 720px) {
+    .path thead { display: none; }
+    .path tr { display: grid; grid-template-columns: 2.2rem 1fr; }
+    .path td { border-bottom: 0; padding: 6px 12px; }
+    .path td.n { grid-row: 1 / span 3; padding-top: 10px; }
+    .path tr { border-bottom: 1px solid var(--line); padding-block: 6px; }
+  }
+  @media print {
+    html { font-size: 11.5px; }
+    body { padding: 0; background: #fff; color: #222; }
+    .page { max-width: none; row-gap: 20px; }
+    header { padding-block: 8px 12px; }
+    section { break-inside: avoid; }
+    .path td { padding: 8px 10px; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="lockup">
+    <svg viewBox="40 30 200 220" aria-hidden="true">
+      <path d="M62 232 Q75 150 150 130" stroke="#009CDE" stroke-width="26" stroke-linecap="round" fill="none"/>
+      <g transform="translate(155 108) rotate(-45)">
+        <path d="M-72 0 C-40 -50 40 -50 72 0 C40 50 -40 50 -72 0 Z" fill="#3F9C35"/>
+        <path d="M-45 0 L45 0" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <div class="title">
+      <div class="wordmark" aria-label="bluestem">blue<span class="stem">stem</span></div>
+      <h1>Product Cost Tracker · demo cheat sheet</h1>
+      <div class="eyebrow">Bluestem Fresh Produce · IFPA 2026 · What’s it cost? Ask once, get the whole crate.</div>
+    </div>
+  </div>
+  <div class="rsm"><span>Powered by</span><img src="assets/rsm-logo.png" alt="RSM"><img class="dark" src="assets/rsm-logo-white.png" alt=""></div>
+</header>
+
+<section>
+  <div class="glance">
+    <div><span class="k">Open</span><span class="v"><a href="https://www.rsmd365.com/product-cost-tracker/">www.rsmd365.com/product-cost-tracker</a><small>No login. Opens on Product cost inquiry with an empty Item field.</small></span></div>
+    <div><span class="k">You are</span><span class="v">Rosa Delgado<small>Buyer, Produce (the RD avatar in the ribbon)</small></span></div>
+    <div><span class="k">Where</span><span class="v">Hart Packing House · site HRT<small>Receives into HRT-RM, packs on HRT-P2 and HRT-P3 · co-pack line HOL-CP1 at the Holland DC</small></span></div>
+    <div><span class="k">ERP</span><span class="v">Dynamics 365 F&amp;SC · company BSFP<small>Two inquiry pages in the F&amp;SC look. Runs entirely in the browser, so it works without the booth network.</small></span></div>
+    <div><span class="k">Loop clip</span><span class="v"><span class="total-s">74</span> s tour + 12 s title card<small>demo-kit/out · captions burned in · one-file reel <span class="reel-s">86</span> s</small></span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Before you walk up</h2>
+  <ul class="check">
+    <li>Open the link. Both pages start with an empty Item field, so the screen looks bare until you run something. Pick <code>RAW-BLU</code> from the Item lookup and press <b>Run</b>: <b>Average landed cost should read $3.01 across 55 receipts</b>, and the first four grid rows should be <b>EXPECTED</b> purchase orders dated over the next four weeks. Dates follow today's date on their own; there is nothing to reseed.</li>
+    <li>Browser at 100% zoom, window at least 1280 px wide. Below about 1024 px the figures on the right of each FastTab header disappear.</li>
+    <li>Know the cast below. Every vendor, order and figure is Bluestem's demo set, generated by the app. Never describe it as a live tenant or as executed ERP postings.</li>
+    <li>Leave the page on <b>Product cost inquiry</b> with the Item field empty for the next presenter. A browser refresh does that.</li>
+  </ul>
+  <div class="warn"><b>Don't press Export to Excel or Export plan to Excel.</b> They drop a CSV into the booth machine's Downloads and put the browser's download bar over the demo. Settings, Help, the search box and the favourite star do nothing, so don't lead anyone to them. <b>Reset</b> clears the item you picked. Pick items from the lookup instead of typing them: a typo returns a red "does not exist" bar. Everything else is safe to click. Nothing saves, and a refresh puts the app back to its opening state.</div>
+</section>
+
+<section>
+  <h2>The story in thirty seconds</h2>
+  <p>Bluestem buys bulk blueberries through Ridgeview Produce Exchange and receives them into the Hart packing house. Three loads bought at the same $2.35 a pound landed at $2.77, $2.66 and $2.90, because freight, pre-cooling, customs and demurrage are allocated order by order, and one of those loads was held at the border. That landed cost stays with the lot. The pint-clamshell runs that consumed those three lots came out at $28.56, $27.48 and $29.86 a case. Today a case calculates at $30.36 against $28.90 on the item record, and a 62,000 lb lot expires tomorrow. The two Hart lines can't pack all of it, which puts $41,678 of fruit at risk until the Holland co-pack line is committed. One cost, followed from the dock to the production plan.</p>
+  <p class="asof">Figures on this sheet were read from the app on 6 October 2026. The order and receipt numbers never change. Averages can move by a cent as the two-year window rolls forward, and batch numbers and dates roll with the calendar, so read those off the screen.</p>
+</section>
+
+<section>
+  <h2>Click path</h2>
+  <div class="table-wrap">
+  <table class="path">
+    <thead><tr><th></th><th>Go to</th><th>Point at</th><th>Say</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="n">1</td>
+        <td class="where"><b>Product cost inquiry</b><span>Item lookup, pick <i>RAW-BLU</i>, press <i>Run</i></span></td>
+        <td class="fig"><ul>
+          <li>Summary: purchase <b>$2.57</b> + add-on <b>$0.44</b> = landed <b>$3.01</b> a pound</li>
+          <li>Margin "standard" <b>25.06%</b> against margin "landed" <b>23.80%</b></li>
+          <li>55 receipts, 2,048,500 lb, four vendors</li>
+          <li>First four grid rows are <span class="pill d365">EXPECTED</span> open POs</li>
+        </ul></td>
+        <td class="say">One item, every receipt. The item record says we make twenty-five percent. At what the fruit actually landed for, it's under twenty-four.</td>
+      </tr>
+      <tr>
+        <td class="n">2</td>
+        <td class="where"><b>Product receipts grid</b><span>Scroll to the 5/18, 4/13 and 3/2/2026 rows, then expand <i>PR-105644</i></span></td>
+        <td class="fig"><ul>
+          <li><code>PO-000273</code> / <code>PR-105644</code>: 40,000 lb, $2.35 + $0.55 = <b>$2.90</b></li>
+          <li><code>PO-000258</code> / <code>PR-105196</code>: 38,000 lb, $2.35 + $0.31 = <b>$2.66</b></li>
+          <li><code>PO-000241</code> / <code>PR-104812</code>: 42,000 lb, $2.35 + $0.42 = <b>$2.77</b></li>
+          <li>Expanded charges: freight $14,000 ($0.35), pre-cooling $3,200 ($0.08), brokerage $1,200, <b>demurrage $2,400 ($0.06)</b>, customs $1,200. Total $22,000 over 40,000 lb.</li>
+        </ul></td>
+        <td class="say">Same vendor, same price, three landed costs. This load sat at the border. Demurrage alone is six cents a pound.</td>
+      </tr>
+      <tr>
+        <td class="n">3</td>
+        <td class="where"><b>Cost variance</b><span>Action pane button, then expand the top row</span></td>
+        <td class="fig"><ul>
+          <li>Baseline <b>$3.01</b>; 37 of 59 lines outside ±5% (18 above, 19 below)</li>
+          <li>Top row <code>PO-000359</code> / <code>PR-106144</code>: $3.78, <span class="pill bad">ABOVE</span> +25.70%</li>
+          <li>Its causes: purchase price +$0.58, transportation +$0.16, cold chain +$0.10</li>
+          <li>The tolerance box is live; type 10 and the list shortens</li>
+        </ul></td>
+        <td class="say">It doesn't stop at flagging the outlier. The cause on each row tells you whether to call the buyer or the carrier.</td>
+      </tr>
+      <tr>
+        <td class="n">4</td>
+        <td class="where"><b>Cost trend</b><span>Action pane button, then <i>12 months</i>; hover the plot</span></td>
+        <td class="fig"><ul>
+          <li>Landed cost <b>+$0.22</b> per lb per year, purchase price <b>+$0.18</b></li>
+          <li>Fit (r²) 21.62%, and the sentence under the chart saying to treat it as a direction of travel</li>
+          <li>Hollow marks at the right are the four open POs</li>
+        </ul></td>
+        <td class="say">Charges are inflating faster than the fruit. And it tells you how far to trust the line before you quote it.</td>
+      </tr>
+      <tr>
+        <td class="n">5</td>
+        <td class="where"><b>Impact analysis</b><span>Open the FastTab; type <i>7</i> in Shift (days) on <i>PO-000931</i></span></td>
+        <td class="fig"><ul>
+          <li>Four open POs: <code>PO-000920</code>, <code>-926</code>, <code>-931</code>, <code>-938</code>, 172,000 lb in total</li>
+          <li>Status <span class="pill ok">Covered</span>, 10 of 10 downstream orders</li>
+          <li>After the shift: <span class="pill bad">HAS IMPACT</span>, 9 of 10 covered, planned order <code>PP-000126</code> (PK-BLU-PINT) short <b>42,000 lb</b></li>
+          <li>Press <i>Reset simulation</i> when you're done</li>
+        </ul></td>
+        <td class="say">The vendor emails asking for another week. Before anyone says yes, you can see which production order it starves.</td>
+      </tr>
+      <tr>
+        <td class="n">6</td>
+        <td class="where"><b>Production cost inquiry</b><span>Hamburger, top left, then the page name; pick <i>PK-BLU-PINT</i>, <i>Run</i></span></td>
+        <td class="fig"><ul>
+          <li>Calculated <b>$30.36</b> a case: material $26.83, packaging $1.29, labour $1.30, overhead $0.93</li>
+          <li>Current cost <b>$28.90</b>, variance +$1.46 (+5.04%), and the amber bar saying so</li>
+          <li>Margin at calculated cost <b>19.05%</b> against 22.93% at current cost</li>
+          <li>23 posted runs averaged $30.29</li>
+        </ul></td>
+        <td class="say">The item record says twenty-eight ninety. Priced at the blueberries actually in the cooler it's thirty thirty-six. That's four points of margin nobody knew had gone.</td>
+      </tr>
+      <tr>
+        <td class="n">7</td>
+        <td class="where"><b>Available batches, then Production plan</b><span>Scroll down the same page</span></td>
+        <td class="fig"><ul>
+          <li>Top lot: 62,000 lb of RAW-BLU, <span class="pill warn">EXPIRING</span> in 1 day, landed $2.81</li>
+          <li>Material at risk <b>$41,677.92</b>, 14,832 lb expires unconverted</li>
+          <li>Planned output 24,179 cases in 21 runs at $30.41 average</li>
+          <li>Binding constraint: line capacity before expiry</li>
+        </ul></td>
+        <td class="say">First-expired, first-out. The two Hart lines can't pack tomorrow's lot in time, and the plan puts a dollar figure on it.</td>
+      </tr>
+      <tr>
+        <td class="n">8</td>
+        <td class="where"><b>Parameters</b><span><i>Show parameters</i>, tick <i>HOL-CP1 Co-pack line — Holland DC</i>, <i>Run</i></span></td>
+        <td class="fig"><ul>
+          <li>Material at risk <b>$0.00</b>, "Nothing expires unconverted"</li>
+          <li>Planned output 25,779 cases in 23 runs, 1,600 more</li>
+          <li>New amber bar: 9 runs are at a different site to the material and need an inventory transfer first</li>
+        </ul></td>
+        <td class="say">Commit the co-packer and the at-risk number goes to zero, with sixteen hundred more cases. And it reminds you those runs need a transfer to Holland first.</td>
+      </tr>
+      <tr>
+        <td class="n">9</td>
+        <td class="where"><b>Copilot</b><span>Action pane, far right</span></td>
+        <td class="fig"><ul>
+          <li>The pane docks beside the form; the grid stays usable</li>
+          <li>Cost position: "the real margin is 19.05% rather than the 22.93% the record suggests"</li>
+          <li>Suggested actions: recalculate and activate the item cost; review packaging inputs (+$0.13 a case)</li>
+        </ul></td>
+        <td class="say">Every figure in this write-up is read off the page you just saw. Pick any sentence and check it against the grid.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Cast and identifiers</h2>
+  <div class="cast">
+    <dl>
+      <dt>Buyer</dt><dd>Rosa Delgado, Buyer, Produce (ribbon persona)</dd>
+      <dt>Lead vendor</dt><dd>Ridgeview Produce Exchange <code>V3014</code>, 18-day quoted lead, about three quarters of blueberry volume</dd>
+      <dt>Other blueberry vendors</dt><dd>Baja Fresca S.A. <code>G2028</code> · Central Coast Berry Co. <code>G2030</code> · Van Dyke Vegetable Co. <code>G2014</code> (5-day lead, priced higher for the speed)</dd>
+      <dt>Sites</dt><dd><code>HRT</code> Hart packing house · <code>GRP</code> Grand Rapids fresh-cut plant · <code>HOL</code> Holland DC and co-packer · <code>SAL</code> Salinas</dd>
+      <dt>Pack lines</dt><dd><code>HRT-P2</code> Berry &amp; Cherry Pack Line, 6 h a day · <code>HRT-P3</code> Berry Pack Line 2 (seasonal), 4 h · <code>HOL-CP1</code> Co-pack line, 10 h</dd>
+    </dl>
+    <dl>
+      <dt>Items to run</dt><dd><code>RAW-BLU</code> Blueberries, bulk (lb) · <code>PK-BLU-PINT</code> Blueberries pint clamshell (case of 12, 9 lb of fruit)</dd>
+      <dt>If they ask for apples</dt><dd><code>RAW-APL-HC</code> Honeycrisp, bulk · <code>FC-APL-SLC-2OZ</code> Apple Slices 2 oz snack cup: calculates at $7.07 against $6.55 on record (+7.98%)</dd>
+      <dt>Anchor orders</dt><dd>Purchase <code>PO-000241</code> · <code>PO-000258</code> · <code>PO-000273</code> · Production <code>P000318</code> · <code>P000341</code> · <code>P000369</code></dd>
+      <dt>Open and planned</dt><dd>Open POs <code>PO-000920</code> to <code>PO-000938</code> · Planned production <code>PP-0001xx</code></dd>
+      <dt>Batches</dt><dd><code>RAW-BLU-yyddd</code> plus a letter: the receipt date as year and day of year, so the numbers roll daily</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2>Questions you will get</h2>
+  <div class="qa">
+    <div><span class="q">Is this actually talking to D365?</span><p>Not on the show floor. The booth build runs on the app's own data in the browser. The same screens sit behind one provider interface with two live options: standard D365 OData entities through a small Node proxy that holds the Azure AD secret, or a custom X++ service that does the joins and the charge allocation server-side. The production page is seeded only for now; its BOM, route and batch on-hand entities have to be confirmed per environment first.</p></div>
+    <div><span class="q">Why do three receipts at the same price land differently?</span><p>Charge allocation. F&amp;SC stores a header charge once against the order. The inquiry spreads it across every line by the order's allocation method (net amount, quantity, net weight or equally), then prorates by how much of the line each receipt covered. Expand any row for the breakdown.</p></div>
+    <div><span class="q">Is the trend line a forecast?</span><p>No, and the screen says so. It is a least-squares line with its r² shown beside it, and the shaded band is a 95% interval for a single future receipt. On an item with a hard seasonal cycle, such as <code>RAW-CUC</code>, the fit drops to a few percent and the message tells you not to quote it.</p></div>
+    <div><span class="q">37 of 59 outside tolerance sounds like a lot.</span><p>The baseline is the whole result, and this one spans two years, so inflation alone pushes the oldest and newest receipts out. Open the parameters, set Days back to 90 and run again to compare each receipt with its own season.</p></div>
+    <div><span class="q">How does impact analysis decide?</span><p>It nets unexpired stock on hand plus open POs against the planned production pegged to them, first-expired-first-out, day by day. It is modelled on the Procurement agent's impact analysis in D365 Supply Chain Management. The what-if recalculates as you type and nothing is saved.</p></div>
+    <div><span class="q">Is Copilot a language model here?</span><p>In this build the analysis is composed from the same result the grids show, so every figure matches the page and the same inquiry always gives the same write-up. It follows the F&amp;SC Copilot sidecar pattern, docked beside the form.</p></div>
+    <div><span class="q">We run standard cost, not actual.</span><p>Then the gap this page shows is your purchase price and production variance, seen before month end. Bluestem's four items are set up for batch actual costing, so each run carries the cost of the lot it consumed, and the page flags an item cost more than 5% away from what the BOM rolls up to today.</p></div>
+    <div><span class="q">Can it live inside F&amp;SC?</span><p>Yes. Adding <code>?embed=1</code> to the address drops the bluestem ribbon so the pages can sit in a workspace without a second header bar.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>If something goes wrong</h2>
+  <ul class="check">
+    <li><b>The page looks empty.</b> That is the opening state. Pick an item from the lookup and press Run.</li>
+    <li><b>A red bar says "Item is a required field" or "does not exist".</b> The Item field is blank or mistyped. Open the lookup, pick <code>RAW-BLU</code> or <code>PK-BLU-PINT</code>, and run again.</li>
+    <li><b>The numbers don't match this sheet.</b> Someone left a filter, a simulation or the co-pack line on. Press F5; nothing is stored, so a refresh returns everything to the opening state.</li>
+    <li><b>The dark ribbon at the top is missing.</b> The address has <code>?embed=1</code> in it. Remove that and reload.</li>
+    <li><b>The site won't load at all.</b> Check the booth network. Once the page has loaded it needs no connection, so open it before the floor opens. Fall back to the looping video while it reconnects.</li>
+  </ul>
+</section>
+
+<section id="voice-over">
+  <h2>Voice-over script</h2>
+  <!-- vo-script:start — generated by write-script.mjs from scenes.mjs; do not edit by hand -->
+  <p>1:14.0 running time, 158 words, read warm and unhurried at about 150 words a minute. Each line is sized to finish half a second before the cut; if you land early, hold the pause. Say "D365" as <i>dee-three-sixty-five</i>, "RSM" as three letters and "co-pack" as <i>koh-pack</i>.</p>
+  <div class="table-wrap">
+  <table class="path vo">
+    <thead><tr><th></th><th>Time</th><th>Scene · on screen</th><th>Narration</th><th>Words</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="n">1</td>
+        <td class="t">0:00.0 – 0:08.0</td>
+        <td class="scene"><b>Product cost inquiry</b><span>Item lookup, pick RAW-BLU, Run. The Summary block fills: average purchase, add-on and landed cost, and the two margins.</span></td>
+        <td class="narr">What does a pound of blueberries really cost? Ask once: every receipt for the item, at its landed cost.</td>
+        <td class="w">19 · 143 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">2</td>
+        <td class="t">0:08.0 – 0:17.5</td>
+        <td class="scene"><b>Landed cost by receipt</b><span>Product receipts grid at the three $2.35 anchor loads; PR-105644 expanded to its charge breakdown ($0.55 a pound, demurrage included).</span></td>
+        <td class="narr">Three loads at the same price land at three different costs. Expand one to see why: freight, cooling, customs, demurrage.</td>
+        <td class="w">20 · 126 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">3</td>
+        <td class="t">0:17.5 – 0:28.0</td>
+        <td class="scene"><b>Variance and trend</b><span>Landed cost variance FastTab with one flagged receipt expanded to its causes; then the Cost trend chart projected 12 months with the open POs as hollow marks.</span></td>
+        <td class="narr">Cost variance flags every receipt outside tolerance and names the cause. Cost trend shows landed cost climbing faster than the purchase price.</td>
+        <td class="w">22 · 126 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">4</td>
+        <td class="t">0:28.0 – 0:37.0</td>
+        <td class="scene"><b>Impact analysis</b><span>Impact analysis FastTab: PO-000931 shifted 7 days flips Covered to Has impact, with planned order PP-000126 short 42,000 lb.</span></td>
+        <td class="narr">A vendor wants to slip a delivery a week? Simulate it first, and see which production order goes short.</td>
+        <td class="w">19 · 127 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">5</td>
+        <td class="t">0:37.0 – 0:46.0</td>
+        <td class="scene"><b>Production cost inquiry</b><span>Navigation pane to Production cost inquiry, pick PK-BLU-PINT, Run. Cost calculation: $30.36 a case against $28.90 on the item record.</span></td>
+        <td class="narr">Production cost inquiry rolls up a case of pints from the lots actually on hand, and flags a stale item cost.</td>
+        <td class="w">21 · 140 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">6</td>
+        <td class="t">0:46.0 – 0:58.0</td>
+        <td class="scene"><b>Production plan</b><span>Production plan tiles with Material at risk $41,677.92; parameters, tick HOL-CP1, Run; the same tile at $0.00.</span></td>
+        <td class="narr">The plan runs first-expired, first-out. Blueberries expiring tomorrow can’t all be packed in time, until the Holland co-pack line is switched on. At risk: zero.</td>
+        <td class="w">25 · 125 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">7</td>
+        <td class="t">0:58.0 – 1:06.0</td>
+        <td class="scene"><b>Copilot</b><span>Copilot pane docked on the right: What was reviewed, Cost position, Variance drivers, Plan and material exposure, Suggested actions.</span></td>
+        <td class="narr">Copilot writes it up: cost position, variance drivers, material exposure and next actions, straight off the page.</td>
+        <td class="w">17 · 128 wpm</td>
+      </tr>
+      <tr>
+        <td class="n">8</td>
+        <td class="t">1:06.0 – 1:14.0</td>
+        <td class="scene"><b>Product Cost Tracker</b><span>Midnight end card: bluestem mark, Product Cost Tracker, tagline, Powered by RSM bottom-right.</span></td>
+        <td class="narr">Product Cost Tracker, powered by RSM. What’s it cost? Ask once, get the whole crate.</td>
+        <td class="w">15 · 113 wpm</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Alternate openers if the room wants a hook (each adds about 5 s): “Spreadsheets are where margins go to hide. Let’s go find them.” · “Here’s a problem every produce company knows by heart: three loads, one price, three different costs.”</p>
+  <!-- vo-script:end -->
+</section>
+
+<section>
+  <h2>Looping video</h2>
+  <div class="loop">
+    <span class="card">Title card · 12 s</span><i>→</i>
+    <span>Product Cost Tracker tour · <span class="total-s">74</span> s</span><i>→</i>
+    <span class="card">Title card · 12 s</span><i>→</i>
+    <span>next Bluestem app …</span>
+  </div>
+  <p>The tour is captioned bottom-left so it works muted. <code>product-cost-tracker-reel.mp4</code> is the title card and the tour joined as one file (<span class="reel-s">86</span> s). The voice-over script with timecodes is in <code>demo-kit/voiceover-script.md</code>; rendered files are in <code>demo-kit/out/</code>. To re-render: <code>node demo-kit/serve.mjs</code>, then <code>node demo-kit/record.mjs</code>.</p>
+</section>
+
+<footer>
+  <span>Figures from <code>web/src/data/seed.ts</code>, read from the running app on 6 October 2026.</span>
+  <span>Product Cost Tracker · bluestem edition</span>
+</footer>
+
+</div>
+</body>
+</html>

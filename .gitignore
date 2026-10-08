@@ -24,3 +24,6 @@ Thumbs.db
 
 # Discovery material — keep customer screenshots out of the repo
 Screenshots/
+
+# Rendered booth videos — regenerate with: node demo-kit/record.mjs
+demo-kit/out/
