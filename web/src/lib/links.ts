@@ -6,12 +6,25 @@
  *
  * When VITE_D365_URL is unset (the offline demo case) these return null and the
  * UI renders the value as plain text instead of a dead link.
+ *
+ * Under the hybrid provider only the live items link: a seeded order number
+ * opened in the real environment would find nothing. Callers gate on
+ * canDeepLink(itemNumber).
  */
 
+import { isLiveItem } from '../data/liveItems'
+
 const BASE = (import.meta.env.VITE_D365_URL ?? '').replace(/\/+$/, '')
-const COMPANY = import.meta.env.VITE_COMPANY ?? 'BSFP'
+const COMPANY =
+  import.meta.env.VITE_LIVE_COMPANY || import.meta.env.VITE_COMPANY || 'BSFP'
+const HYBRID = import.meta.env.VITE_DATA_PROVIDER === 'hybrid'
 
 export const deepLinksEnabled = BASE.length > 0
+
+/** Whether records for this item exist in the linked environment. */
+export function canDeepLink(itemNumber: string): boolean {
+  return deepLinksEnabled && (!HYBRID || isLiveItem(itemNumber))
+}
 
 function link(menuItem: string, filters: Record<string, string>): string | null {
   if (!deepLinksEnabled) return null

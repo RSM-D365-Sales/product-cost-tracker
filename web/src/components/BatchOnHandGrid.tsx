@@ -2,7 +2,12 @@ import { useMemo } from 'react'
 import type { BatchOnHand, BatchStatus } from '../types/production'
 import { Grid, type Column } from './d365/Grid'
 import { money, qty, shortDate } from '../lib/format'
-import { batchLink, productReceiptLink, purchaseOrderLink } from '../lib/links'
+import {
+  batchLink,
+  canDeepLink,
+  productReceiptLink,
+  purchaseOrderLink,
+} from '../lib/links'
 
 /**
  * Available batches: every lot with stock on it, in FEFO order, valued at the
@@ -79,7 +84,9 @@ export function BatchOnHandGrid({
         width: '128px',
         sortValue: (r) => r.batchNumber,
         render: (r) => {
-          const href = batchLink(r.itemNumber, r.batchNumber)
+          const href = canDeepLink(r.itemNumber)
+            ? batchLink(r.itemNumber, r.batchNumber)
+            : null
           return href ? (
             <a className="f-link truncate" href={href} target="_blank" rel="noreferrer">
               {r.batchNumber}
@@ -191,12 +198,9 @@ export function BatchOnHandGrid({
         width: '150px',
         sortValue: (r) => r.receiptNumber,
         render: (r) => {
-          const href =
-            r.sourceType === 'Production'
-              ? null
-              : productReceiptLink(r.receiptNumber)
-          const orderHref =
-            r.sourceType === 'Production' ? null : purchaseOrderLink(r.orderNumber)
+          const linkable = r.sourceType !== 'Production' && canDeepLink(r.itemNumber)
+          const href = linkable ? productReceiptLink(r.receiptNumber) : null
+          const orderHref = linkable ? purchaseOrderLink(r.orderNumber) : null
           return (
             <span className="block truncate" title={`${r.orderNumber} · ${r.receiptNumber}`}>
               {href ? (

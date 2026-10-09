@@ -587,9 +587,12 @@ export function ProductionCostInquiry({
   )
 }
 
-/** Mirrors the product cost inquiry: hidden on the seeded provider. */
+/**
+ * Mirrors the product cost inquiry: hidden on seeded data. Under the hybrid
+ * provider this page only ever runs on the seed, so it is hidden there too.
+ */
 function ProviderBadge({ provider }: { provider: ProductCostProvider }) {
-  if (provider.kind === 'mock') return null
+  if (provider.kind === 'mock' || provider.kind === 'hybrid') return null
 
   return (
     <span
@@ -623,7 +626,7 @@ function StatusBar({
       {result && !loading ? (
         <span>Calculated in {result.elapsedMs} ms</span>
       ) : null}
-      {provider.kind === 'mock' ? null : (
+      {provider.kind === 'mock' || provider.kind === 'hybrid' ? null : (
         <span className="ml-auto">
           Source: {provider.label} ({provider.kind})
         </span>

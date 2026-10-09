@@ -13,7 +13,7 @@ import {
   qtyPrecise,
   shortDate,
 } from '../lib/format'
-import { releasedProductLink } from '../lib/links'
+import { canDeepLink, releasedProductLink } from '../lib/links'
 
 /**
  * The bill of material and the route, costed.
@@ -79,7 +79,7 @@ export function BomPanel({
             >
               {r.itemNumber}
             </button>
-          ) : releasedProductLink(r.itemNumber) ? (
+          ) : canDeepLink(r.itemNumber) && releasedProductLink(r.itemNumber) ? (
             <a
               className="f-link truncate"
               href={releasedProductLink(r.itemNumber)!}

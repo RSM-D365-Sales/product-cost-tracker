@@ -12,7 +12,8 @@
     "dev:server": "npm run dev --workspace server",
     "dev:all": "concurrently -n web,api -c cyan,magenta \"npm:dev\" \"npm:dev:server\"",
     "build": "npm run build --workspace web",
-    "typecheck": "npm run typecheck --workspace web && npm run typecheck --workspace server",
+    "typecheck": "npm run typecheck --workspace web && npm run typecheck --workspace server && tsc -p functions",
+    "check:live": "tsx scripts/check-live.ts",
     "preview": "npm run preview --workspace web"
   },
   "devDependencies": {

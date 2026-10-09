@@ -137,11 +137,12 @@ The UI never talks to a data source directly. It codes against one interface,
 | `mock`    | Deterministic seeded data, in-browser                                | nothing                        |
 | `odata`   | Standard D365 data entities, joined and allocated client-side        | proxy + environment            |
 | `service` | Custom X++ service, joined and allocated server-side                 | proxy + deployed package       |
+| `hybrid`  | `mock` for the catalogue, `odata` for the items in `liveItems.ts`    | proxy + environment            |
 
 Switching is a one-line change in `web/.env`:
 
 ```
-VITE_DATA_PROVIDER=mock      # or odata | service
+VITE_DATA_PROVIDER=mock      # or odata | service | hybrid
 ```
 
 ```
@@ -577,6 +578,69 @@ dead links.
 
 ---
 
+## Live items alongside the demo data (hybrid)
+
+`VITE_DATA_PROVIDER=hybrid` keeps every seeded item exactly as it is and reads
+a short list of items live from Dynamics 365. The list lives in one file,
+[`web/src/data/liveItems.ts`](web/src/data/liveItems.ts) — today FG860–FG878
+(olive oils, vinegars, coconut water, rice, olives) — and those items appear at
+the end of the Item lookup.
+
+The walkthrough it is built for: create a purchase order for one of those items
+in Finance and Supply Chain, then open this app and run the same item. The new
+order shows up straight away as an **Expected** row — vendor-confirmed price
+plus its share of the charges already on the order, at the confirmed delivery
+date (requested date until the vendor confirms). Receipt it and run again: it
+becomes a posted row with its product receipt number, and the summary, trend,
+variance and Copilot pick it up.
+
+What a live item shows, all read from the environment: product name, unit,
+sales price, item cost and released-product purchase price; every posted
+product receipt with the order price and allocated charges; open order lines
+(part-received lines show only what is still to come); vendor names. The
+summary adds *Purchase price (released product)*, *Open order purchase price*,
+*Open order landed cost* and *Quantity on order*, and Copilot adds an **Open
+orders** section — both only for live results, so the seeded screens are
+unchanged. Seeded items never deep-link into the live environment, and the
+production cost inquiry stays on the seed (its button is disabled for live
+items).
+
+### Setting it up
+
+```
+# server/.env  — credentials are already there; add the environment
+D365_URL=https://<env>.operations.dynamics.com
+D365_COMPANY=<legal entity>
+
+# web/.env
+VITE_DATA_PROVIDER=hybrid
+VITE_LIVE_COMPANY=<legal entity the FG items are released to>
+VITE_D365_URL=https://<env>.operations.dynamics.com   # optional: drill-through
+```
+
+```bash
+npm run dev:all        # web + proxy
+npm run check:live     # before the call
+```
+
+`check:live` confirms the proxy can sign in, shows which entity set and field
+names each entity bound to in *this* environment, and lists every live item
+with its sales price, cost, receipt count and open order lines — so you know
+which item to pick before the prospect is watching. An item with nothing on it
+runs empty until a PO is created.
+
+Field names are not hard-coded to one F&O version: each entity in
+`odataConfig.ts` lists candidate names, and the first live call reads one record
+and binds to whichever the environment exposes (see
+[`providers/odataSchema.ts`](web/src/providers/odataSchema.ts)). A required
+field with no match fails with a message listing what the entity *does* expose.
+
+The live path needs a proxy. Locally that is `server/`; hosted, it is the
+Cloudflare Pages Function in [`functions/api/`](functions/api/) — see
+**Deploying the demo** below. The public production site stays on `mock`.
+
+---
+
 ## Custom service (recommended for production)
 
 The OData path has two limitations it cannot resolve from outside F&O, both
@@ -617,6 +681,8 @@ web/                          Vite + React 18 + TS + Tailwind
   src/components/d365/        F&O kit (shell, nav pane, action pane, FastTab, grid)
   src/pages/                  The two inquiries
 server/                       Node proxy: Azure AD auth, OData passthrough, probe
+functions/api/                The same proxy as a Cloudflare Pages Function, company-scoped
+scripts/check-live.ts         Pre-demo check of the live items against an environment
 dynamics/                     X++ service + data contracts
 fabric/                       Fabric lakehouse starter: seed → F&O-shaped bronze
                               CSVs + a notebook for silver/gold (see fabric/README.md)
@@ -675,21 +741,73 @@ by the corporate proxy.
 
 ## Deploying the demo
 
-**Live:** <https://www.rsmd365.com/product-cost-tracker/>
+Two **Cloudflare Pages** projects, both Git-connected to this repo's `main`
+(build `npm run build`, output `web/dist`, `NODE_VERSION=20`). Every push to
+`main` rebuilds both.
 
-Every push to `main` rebuilds and republishes it — `.github/workflows/deploy.yml`
-builds the `web` workspace with `BASE_PATH=/product-cost-tracker/` and uploads
-`web/dist` to GitHub Pages. Nothing is deployed by hand.
+| | Public demo | Live demo |
+| --- | --- | --- |
+| Pages project | `product-cost-tracker` | `product-cost-tracker-live` |
+| URL | <https://product-tracker.rsmd365.com> (hub tile) | `https://product-cost-tracker-live.pages.dev` |
+| Data | seeded (`mock`) | seeded + FG860–FG878 from D365 (`hybrid`) |
+| Who | anyone | anyone |
+| Variables | none | below — the Azure secret as an encrypted secret |
 
-To reproduce that build locally:
+`.github/workflows/deploy.yml` is the old GitHub Pages workflow; GitHub Pages
+is unpublished and it is no longer how the site deploys.
 
-```bash
-BASE_PATH=/product-cost-tracker/ npm run build   # → web/dist
-```
+Routing is hash-based, so no SPA rewrite rules are needed.
 
-Keep `VITE_DATA_PROVIDER=mock` for a public static host — the `odata` and
-`service` providers need the proxy, which cannot run on GitHub Pages. Routing is
-hash-based, so no SPA rewrite rules or `404.html` fallback are needed.
+### The live project — one-time setup
+
+Nothing secret goes in the repo. The `functions/api` proxy reads its settings
+at runtime from the Pages project and refuses every request (503) until the
+D365 connection is configured and `ALLOW_PUBLIC` is set deliberately — which
+is why the same code is safe on the public project, where none of it is set.
+
+1. **Create the project.** Workers & Pages → Create → **Pages** tab → Connect
+   to Git → `RSM-D365-Sales/product-cost-tracker`. Name it
+   `product-cost-tracker-live`, branch `main`, build command `npm run build`,
+   output directory `web/dist`.
+2. **Add the variables** (project → Settings → Variables and Secrets,
+   Production), then **Retry deployment** so the build picks them up:
+
+   | Name | Type | Value |
+   | --- | --- | --- |
+   | `NODE_VERSION` | text | `20` |
+   | `VITE_DATA_PROVIDER` | text | `hybrid` |
+   | `VITE_LIVE_COMPANY` | text | legal entity the FG items are released to |
+   | `VITE_D365_URL` | text | `https://<env>.operations.dynamics.com` (drill-through links) |
+   | `D365_URL` | text | same environment URL |
+   | `D365_COMPANY` | text | same legal entity as `VITE_LIVE_COMPANY` |
+   | `AZURE_TENANT_ID` | text | app registration tenant |
+   | `AZURE_CLIENT_ID` | text | app registration client id |
+   | `AZURE_CLIENT_SECRET` | **secret** | app registration secret |
+   | `ALLOW_PUBLIC` | text | `true` |
+
+   `VITE_*` values are compiled into the page and visible to anyone who can
+   load it — never put a secret in a `VITE_` name.
+3. **Share the URL**: `https://product-cost-tracker-live.pages.dev/#/product-cost`
+   (`?embed=1#/product-cost` inside an F&SC workspace).
+
+The site and its proxy are public by choice: anyone who finds the URL can read
+what the app reads, for that one company. Changing your mind later is a
+variable, not a code change — swap `ALLOW_PUBLIC` for `DEMO_KEY` (a 32+
+character secret; the presenter then opens `…/?key=<DEMO_KEY>` once) or for
+Cloudflare Access (`ACCESS_TEAM_DOMAIN` + `ACCESS_AUD`). See the header of
+`functions/api/[[path]].ts`.
+
+In D365, the app registration's Entra application record should map to a user
+with **read-only** duties — the proxy only issues GETs, but least privilege is
+the backstop.
+
+**What the proxy allows** (checked on every request): GET only; the entity
+sets named in `odataConfig.ts` and nothing else — customers, vendor bank
+accounts and the rest are refused; `$filter`, `$select`, `$orderby`,
+`$top ≤ 1000` and `cross-company`; every query confined server-side to
+`D365_COMPANY`, whatever filter is sent (a public proxy will not start without
+it); nextLinks only back to the same environment, an allowed set and that
+company.
 
 ### Embedding in Finance and Supply Chain
 

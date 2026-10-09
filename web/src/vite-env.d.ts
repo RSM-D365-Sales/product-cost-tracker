@@ -1,9 +1,14 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_DATA_PROVIDER?: 'mock' | 'odata' | 'service'
+  readonly VITE_DATA_PROVIDER?: 'mock' | 'odata' | 'service' | 'hybrid'
   readonly VITE_API_BASE?: string
   readonly VITE_COMPANY?: string
+  /**
+   * Legal entity the live items are read from. Defaults to VITE_COMPANY; set
+   * it under the hybrid provider, where the page header keeps the demo company.
+   */
+  readonly VITE_LIVE_COMPANY?: string
   /** Base URL of the F&O environment, used to build drill-through deep links. */
   readonly VITE_D365_URL?: string
   /**

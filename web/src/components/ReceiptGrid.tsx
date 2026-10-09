@@ -4,6 +4,7 @@ import { Grid, type Column } from './d365/Grid'
 import { ChargeDetail } from './ChargeDetail'
 import { money, percent, qty, shortDate } from '../lib/format'
 import {
+  canDeepLink,
   productReceiptLink,
   productionOrderLink,
   purchaseOrderLink,
@@ -78,9 +79,11 @@ export function ReceiptGrid({
           <DrillLink
             value={r.purchaseOrderNumber}
             href={
-              isProduction(r)
-                ? productionOrderLink(r.purchaseOrderNumber)
-                : purchaseOrderLink(r.purchaseOrderNumber)
+              !canDeepLink(r.itemNumber)
+                ? null
+                : isProduction(r)
+                  ? productionOrderLink(r.purchaseOrderNumber)
+                  : purchaseOrderLink(r.purchaseOrderNumber)
             }
           />
         ),
@@ -98,7 +101,11 @@ export function ReceiptGrid({
           ) : (
             <DrillLink
               value={r.receiptNumber}
-              href={isProduction(r) ? null : productReceiptLink(r.receiptNumber)}
+              href={
+                isProduction(r) || !canDeepLink(r.itemNumber)
+                  ? null
+                  : productReceiptLink(r.receiptNumber)
+              }
             />
           ),
       },
@@ -110,7 +117,9 @@ export function ReceiptGrid({
         render: (r) => (
           <DrillLink
             value={r.itemNumber}
-            href={releasedProductLink(r.itemNumber)}
+            href={
+              canDeepLink(r.itemNumber) ? releasedProductLink(r.itemNumber) : null
+            }
           />
         ),
       },

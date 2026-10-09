@@ -128,6 +128,57 @@ function impactSection(impact: ImpactNarrativeInput, unit: string): CopilotSecti
   return { heading: 'Impact analysis', paragraphs }
 }
 
+/**
+ * Open order lines priced against the posted receipts: where the next loads are
+ * expected to land, line by line. Used when there is no impact analysis to
+ * carry them — every figure is the Expected rows' own.
+ */
+function openOrdersSection(
+  result: ProductCostResult,
+  analysis: LandedVarianceAnalysis | null,
+): CopilotSection {
+  const { item, summary } = result
+  const cur = summary.currency
+  const unit = item.unit
+  const open = result.expected ?? []
+  const total = open.reduce((s, r) => s + r.quantityReceived, 0)
+  const avgLanded =
+    total > 0
+      ? open.reduce((s, r) => s + r.landedCost * r.quantityReceived, 0) / total
+      : 0
+  const baseline = summary.receiptCount > 0 ? summary.averageLandedCost : 0
+  const vs = (landed: number) =>
+    baseline > 0 ? ` (${signedPercent(landed / baseline - 1)})` : ''
+
+  const paragraphs = [
+    `${n(open.length, 'open order line')} for ${qty(total)} ${unit} ${open.length === 1 ? 'is' : 'are'} expected to land at ` +
+      `${money(avgLanded, cur)} per ${unit} on average` +
+      (baseline > 0
+        ? ` — ${signedPercent(avgLanded / baseline - 1)} against the ${money(baseline, cur)} the posted receipts landed at.`
+        : ', at vendor-confirmed prices plus the charges already on the orders.'),
+  ]
+  if (analysis && baseline > 0) {
+    const outside = open.filter(
+      (r) => Math.abs(r.landedCost / baseline - 1) * 100 > analysis.tolerancePct,
+    ).length
+    paragraphs.push(
+      outside === 0
+        ? `All of them land within ±${analysis.tolerancePct}% of that baseline.`
+        : `${n(outside, 'line')} would land outside ±${analysis.tolerancePct}% of it.`,
+    )
+  }
+
+  return {
+    heading: 'Open orders',
+    paragraphs,
+    bullets: open.slice(0, 6).map(
+      (r) =>
+        `${r.purchaseOrderNumber} ${r.vendorName || r.vendorAccount} — ${qty(r.quantityReceived)} ${unit} due ${shortDate(r.receiptDate)}, ` +
+        `${money(r.purchasePriceFob, cur)} + ${money(r.financialChargesAoc, cur)} charges = ${money(r.landedCost, cur)}${vs(r.landedCost)}`,
+    ),
+  }
+}
+
 export function purchasingNarrative(
   result: ProductCostResult,
   analysis: LandedVarianceAnalysis | null,
@@ -169,11 +220,42 @@ export function purchasingNarrative(
   if (produced > 0)
     activityBits.push(`${n(produced, 'posted production run')}`)
 
+  const scopeText = scopeFilters.length
+    ? `, limited to ${scopeFilters.join(', ')}`
+    : ''
+  const expected = result.expected ?? []
+
+  // An item whose only activity is an order not yet received — the live
+  // walkthrough right after the PO is created. Nothing has landed, so there is
+  // no cost position to state; the open orders are the whole story.
+  if (rows.length === 0) {
+    sections.push({
+      heading: 'What was reviewed',
+      paragraphs: [
+        `${item.itemNumber} ${item.productName} has no posted receipts ${windowText}${scopeText}` +
+          (expected.length
+            ? ` — only ${n(expected.length, 'open order line')}, so the analysis below is of what is on order, not what has landed.`
+            : '.'),
+      ],
+    })
+    if (!impact && expected.length) sections.push(openOrdersSection(result, null))
+    sections.push({
+      heading: 'Suggested actions',
+      paragraphs: [],
+      bullets: [
+        expected.length
+          ? 'Run the inquiry again after the first product receipt is posted to compare what lands against what was ordered.'
+          : 'Widen the date range or clear the optional parameters.',
+      ],
+    })
+    return sections
+  }
+
   sections.push({
     heading: 'What was reviewed',
     paragraphs: [
       `${item.itemNumber} ${item.productName}: ${activityBits.join(' and ')} ` +
-        `${windowText}${scopeFilters.length ? `, limited to ${scopeFilters.join(', ')}` : ''}, ` +
+        `${windowText}${scopeText}, ` +
         `totalling ${qty(summary.totalQuantity)} ${unit}.`,
     ],
   })
@@ -347,12 +429,31 @@ export function purchasingNarrative(
   }
 
   // --- Expected supply and impact analysis ---------------------------------
+  // Items with pegged demand get the impact analysis, which already covers
+  // their open orders. Without it (a live environment, where no demand is
+  // modelled) the open orders are priced against the posted baseline instead.
   if (impact) {
     sections.push(impactSection(impact, item.unit))
+  } else if (expected.length) {
+    sections.push(openOrdersSection(result, analysis))
   }
 
   // --- Recommendations -----------------------------------------------------
   const bullets: string[] = []
+  if (!impact && expected.length && summary.averageLandedCost > 0) {
+    const band = (analysis?.tolerancePct ?? 5) / 100
+    const dear = [...expected]
+      .map((r) => ({ r, gap: r.landedCost / summary.averageLandedCost - 1 }))
+      .filter((x) => x.gap > band)
+      .sort((a, b) => b.gap - a.gap)[0]
+    if (dear) {
+      bullets.push(
+        `Review ${dear.r.purchaseOrderNumber} with ${dear.r.vendorName || dear.r.vendorAccount} before it ships — ` +
+          `it is expected to land at ${money(dear.r.landedCost, cur)} per ${unit}, ` +
+          `${signedPercent(dear.gap)} over what the posted receipts averaged.`,
+      )
+    }
+  }
   if (impact?.active && impact.comparison.hasImpact) {
     const first =
       impact.comparison.newlyShortDemands[0] ?? impact.simulated.shortDemands[0]

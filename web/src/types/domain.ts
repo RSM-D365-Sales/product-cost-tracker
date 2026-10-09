@@ -176,6 +176,11 @@ export interface ItemInfo {
   sellingPrice: number
   itemGroupId?: string
   costingMethod?: string
+  /**
+   * Purchase price on the released product. Only the live providers set it;
+   * the summary shows it beside what the orders actually paid.
+   */
+  masterPurchasePrice?: number
 }
 
 /** Generic id/name pair used by the lookup fields. */
@@ -212,7 +217,11 @@ export interface ProductCostQuery {
   daysBack?: number
 }
 
-export type ProviderKind = 'mock' | 'odata' | 'service'
+/**
+ * `hybrid` routes the items in data/liveItems.ts to OData and everything else
+ * to the seed; its results still report the `source` that produced them.
+ */
+export type ProviderKind = 'mock' | 'odata' | 'service' | 'hybrid'
 
 export interface ProductCostResult {
   query: ProductCostQuery

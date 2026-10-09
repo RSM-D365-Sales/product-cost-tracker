@@ -41,30 +41,48 @@ function ReadOnlyValue({
   )
 }
 
+/**
+ * Prices only a live environment has to offer: the released product's purchase
+ * price, and where the open order lines are priced. A purchase order created
+ * in the walkthrough has no receipts yet, so without these the averages above
+ * would be the only figures on the block — and they would be zero.
+ */
+export interface LivePrices {
+  masterPurchasePrice?: number
+  openOrders?: { quantity: number; purchasePrice: number; landedCost: number }
+}
+
 export function SummaryPanel({
   summary,
   unit,
+  live,
 }: {
   summary: ProductCostSummary
   unit: string
+  live?: LivePrices
 }) {
   const c = summary.currency
+  // Nothing received yet (e.g. a purchase order created minutes ago): an
+  // average of no receipts is not $0.00, and a landed margin on it is not 100%.
+  const none = summary.receiptCount === 0
+  const avg = (v: number) => (none ? '—' : money(v, c))
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-x-12 gap-y-2 lg:grid-cols-2">
       <div className="space-y-2">
         <ReadOnlyValue
           label="Average purchase cost"
-          value={money(summary.averagePurchaseCost, c)}
+          value={avg(summary.averagePurchaseCost)}
         />
         <ReadOnlyValue
           label="Average landed cost"
-          value={money(summary.averageLandedCost, c)}
+          value={avg(summary.averageLandedCost)}
           emphasis
         />
         <ReadOnlyValue
           label="Average add-on cost"
-          value={money(summary.averageAddOnCost, c)}
+          value={avg(summary.averageAddOnCost)}
         />
         <ReadOnlyValue
           label="Selling price"
@@ -85,8 +103,8 @@ export function SummaryPanel({
         />
         <ReadOnlyValue
           label={'Average margin "landed"'}
-          value={percent(summary.averageMarginLanded)}
-          tone={marginTone(summary.averageMarginLanded)}
+          value={none ? '—' : percent(summary.averageMarginLanded)}
+          tone={none ? undefined : marginTone(summary.averageMarginLanded)}
           emphasis
         />
         <ReadOnlyValue
@@ -95,5 +113,38 @@ export function SummaryPanel({
         />
       </div>
     </div>
+
+    {live && (live.masterPurchasePrice !== undefined || live.openOrders) ? (
+      <div className="mt-3 grid grid-cols-1 gap-x-12 gap-y-2 border-t border-stroke-subtle pt-3 lg:grid-cols-2">
+        <div className="space-y-2">
+          {live.masterPurchasePrice !== undefined ? (
+            <ReadOnlyValue
+              label="Purchase price (released product)"
+              value={money(live.masterPurchasePrice, c)}
+            />
+          ) : null}
+          {live.openOrders ? (
+            <ReadOnlyValue
+              label="Open order purchase price"
+              value={money(live.openOrders.purchasePrice, c)}
+            />
+          ) : null}
+        </div>
+        {live.openOrders ? (
+          <div className="space-y-2">
+            <ReadOnlyValue
+              label="Open order landed cost"
+              value={money(live.openOrders.landedCost, c)}
+              emphasis
+            />
+            <ReadOnlyValue
+              label="Quantity on order"
+              value={`${qty(live.openOrders.quantity)} ${unit}`}
+            />
+          </div>
+        ) : null}
+      </div>
+    ) : null}
+    </>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProductCostResult } from '../types/domain'
 import type { ProductCostProvider } from '../providers/types'
+import { LIVE_COMPANY } from '../providers/odataClient'
 import { ProviderError } from '../providers/types'
 
 import { AppShell } from '../components/d365/AppShell'
@@ -34,7 +35,7 @@ import {
   toQuery,
   type ParamsForm,
 } from '../components/ParametersPanel'
-import { SummaryPanel } from '../components/SummaryPanel'
+import { SummaryPanel, type LivePrices } from '../components/SummaryPanel'
 import { CostTrendPanel } from '../components/CostTrendPanel'
 import { ReceiptGrid } from '../components/ReceiptGrid'
 import { LandedVariancePanel } from '../components/LandedVariancePanel'
@@ -44,7 +45,8 @@ import { CopilotPane } from '../components/CopilotPane'
 import { money, percent, qty, shortDate, signedPercent } from '../lib/format'
 import { hasOptionalFilters, resolveDateWindow } from '../lib/query'
 import { downloadCsv } from '../lib/export'
-import { deepLinksEnabled } from '../lib/links'
+import { canDeepLink } from '../lib/links'
+import { isLiveItem } from '../data/liveItems'
 import { analyseLandedVariance } from '../lib/variance'
 import {
   compareNetting,
@@ -198,7 +200,7 @@ export function ProductCostInquiry({
       setAdjustments({})
       // Collapse the parameters block once there are results to look at, the
       // way F&O inquiry forms hand the screen over to the grid.
-      if (res.rows.length > 0) setShowParams(false)
+      if (res.rows.length > 0 || res.expected?.length) setShowParams(false)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       if (e instanceof ProviderError) {
@@ -234,6 +236,13 @@ export function ProductCostInquiry({
 
   const summary = result?.summary
   const window = resolveDateWindow(toQuery(form))
+  const livePrices = useMemo(
+    () => (result && result.source !== 'mock' ? livePricesOf(result) : undefined),
+    [result],
+  )
+  // Under the hybrid provider the live items have no production inquiry.
+  const productionUnavailable =
+    provider.kind === 'hybrid' && isLiveItem(form.itemNumber)
 
   return (
     <AppShell
@@ -242,7 +251,7 @@ export function ProductCostInquiry({
       title={PAGE.title}
       activePageId={PAGE.id}
       onNavigate={onNavigate ? (id) => onNavigate(id) : undefined}
-      captionAside={<ProviderBadge provider={provider} />}
+      captionAside={<ProviderBadge provider={provider} result={result} />}
       statusBar={
         <StatusBar
           result={result}
@@ -331,13 +340,17 @@ export function ProductCostInquiry({
                 {onNavigate ? (
                   <ActionButton
                     icon={IconFactory}
-                    disabled={!form.itemNumber.trim()}
+                    disabled={!form.itemNumber.trim() || productionUnavailable}
                     onClick={() =>
                       onNavigate('production-cost', {
                         item: form.itemNumber.trim(),
                       })
                     }
-                    title="Take this item to the production cost inquiry: its bill of material, the batches on hand, and what can be made from them"
+                    title={
+                      productionUnavailable
+                        ? 'The production cost inquiry runs on the demo catalogue; this item is read live from Dynamics 365'
+                        : 'Take this item to the production cost inquiry: its bill of material, the batches on hand, and what can be made from them'
+                    }
                   >
                     Production cost
                   </ActionButton>
@@ -449,16 +462,24 @@ export function ProductCostInquiry({
             summary={[
               {
                 label: 'Avg. landed',
-                value: money(summary.averageLandedCost, summary.currency),
+                value: summary.receiptCount
+                  ? money(summary.averageLandedCost, summary.currency)
+                  : '—',
               },
               {
                 label: 'Margin (landed)',
-                value: percent(summary.averageMarginLanded),
+                value: summary.receiptCount
+                  ? percent(summary.averageMarginLanded)
+                  : '—',
               },
               { label: 'Receipts', value: qty(summary.receiptCount) },
             ]}
           >
-            <SummaryPanel summary={summary} unit={result.item.unit} />
+            <SummaryPanel
+              summary={summary}
+              unit={result.item.unit}
+              live={livePrices}
+            />
           </FastTab>
         ) : null}
 
@@ -595,10 +616,12 @@ export function ProductCostInquiry({
                   },
                   {
                     label: 'Avg. landed',
-                    value: money(
-                      result.summary.averageLandedCost,
-                      result.summary.currency,
-                    ),
+                    value: result.summary.receiptCount
+                      ? money(
+                          result.summary.averageLandedCost,
+                          result.summary.currency,
+                        )
+                      : '—',
                   },
                 ]
               : undefined
@@ -606,7 +629,7 @@ export function ProductCostInquiry({
         >
           {result ? (
             <p className="mb-1 px-[2px] text-sm text-ink-secondary">
-              {deepLinksEnabled
+              {canDeepLink(result.item.itemNumber)
                 ? 'Select an order or receipt number to open it in Finance and Operations.'
                 : 'Expand a row to see the charge breakdown.'}
               {includeExpected && result.expected
@@ -626,13 +649,44 @@ export function ProductCostInquiry({
   )
 }
 
+/** Item-master purchase price, and the quantity-weighted prices of the open lines. */
+function livePricesOf(result: ProductCostResult): LivePrices {
+  const open = result.expected ?? []
+  const quantity = open.reduce((s, r) => s + r.quantityReceived, 0)
+  const weighted = (pick: (r: (typeof open)[number]) => number) =>
+    quantity > 0
+      ? open.reduce((s, r) => s + pick(r) * r.quantityReceived, 0) / quantity
+      : 0
+  return {
+    masterPurchasePrice: result.item.masterPurchasePrice,
+    openOrders:
+      quantity > 0
+        ? {
+            quantity,
+            purchasePrice: weighted((r) => r.purchasePriceFob),
+            landedCost: weighted((r) => r.landedCost),
+          }
+        : undefined,
+  }
+}
+
 /**
- * Which environment the numbers came from. Only rendered once the app is
- * pointed at a live one — on the seeded provider there is nothing to announce,
- * and the page should read as the F&O form it is modelled on.
+ * Which environment the numbers came from. Only rendered for live data — on
+ * seeded data there is nothing to announce, and the page should read as the
+ * F&O form it is modelled on. Under the hybrid provider that is decided per
+ * result, so a seeded item never wears the live badge.
  */
-function ProviderBadge({ provider }: { provider: ProductCostProvider }) {
+function ProviderBadge({
+  provider,
+  result,
+}: {
+  provider: ProductCostProvider
+  result: ProductCostResult | null
+}) {
   if (provider.kind === 'mock') return null
+  if (provider.kind === 'hybrid' && (!result || result.source === 'mock')) {
+    return null
+  }
 
   return (
     <span
@@ -640,7 +694,9 @@ function ProviderBadge({ provider }: { provider: ProductCostProvider }) {
       title={`Data provider: ${provider.kind}`}
     >
       <span className="h-[6px] w-[6px] rounded-full bg-current" />
-      {provider.label}
+      {provider.kind === 'hybrid'
+        ? `Live · Dynamics 365 · ${LIVE_COMPANY}`
+        : provider.label}
     </span>
   )
 }
@@ -666,9 +722,13 @@ function StatusBar({
       {result && !loading ? (
         <span>Retrieved in {result.elapsedMs} ms</span>
       ) : null}
-      {provider.kind === 'mock' ? null : (
+      {provider.kind === 'mock' ||
+      (provider.kind === 'hybrid' && result?.source !== 'odata') ? null : (
         <span className="ml-auto">
-          Source: {provider.label} ({provider.kind})
+          Source:{' '}
+          {provider.kind === 'hybrid'
+            ? `Dynamics 365 · ${LIVE_COMPANY} (odata)`
+            : `${provider.label} (${provider.kind})`}
         </span>
       )}
     </div>
