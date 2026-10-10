@@ -68,12 +68,22 @@ async function resolve(
   for (const set of candidates(entity.set)) {
     let sample: Record<string, unknown>[]
     try {
-      sample = await odataQuery(set, { top: 1, anyCompany: true, signal }, key)
+      sample = await odataQuery(
+        set,
+        // A shared entity has no company at all; asking for one is a 400.
+        entity.global ? { top: 1, companyScoped: false, signal } : { top: 1, anyCompany: true, signal },
+        key,
+      )
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
       if (e instanceof ProviderError && e.status === 404) continue
-      // An optional entity the hosted proxy does not allow yet (an older
-      // deployment of functions/api) is as good as absent.
-      if (e instanceof ProviderError && e.status === 403 && entity.optional) continue
+      // An optional entity is an enhancement: whatever stops it — absent, not
+      // allowed by an older deployment of the proxy, or rejected — the
+      // inquiry runs without it rather than failing on its account.
+      if (entity.optional) {
+        if (import.meta.env.DEV) console.warn(`[odata] optional ${key} unavailable`, e)
+        return null
+      }
       throw e
     }
 

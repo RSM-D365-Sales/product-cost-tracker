@@ -34,7 +34,7 @@
  * The public project (product-tracker.rsmd365.com) has none of these set, so
  * there this function answers 503 and the site stays on demo data.
  */
-import { ODATA, candidates } from '../../web/src/lib/odataConfig'
+import { GLOBAL_SETS, ODATA, candidates } from '../../web/src/lib/odataConfig'
 
 interface Env {
   D365_URL?: string
@@ -135,7 +135,12 @@ export async function onRequest({ request, env }: Context): Promise<Response> {
     }
     // A genuine nextLink echoes the scoped filter this proxy sent; anything
     // else is a hand-made URL trying to page through another company.
-    if (company && !isScoped(upstream.searchParams.get('$filter') ?? '', company)) {
+    // Shared entities have no company to page through.
+    if (
+      company &&
+      !GLOBAL_SETS.has(set) &&
+      !isScoped(upstream.searchParams.get('$filter') ?? '', company)
+    ) {
       return json(400, { error: 'nextLink is outside the configured company.' })
     }
   } else {
@@ -151,7 +156,9 @@ export async function onRequest({ request, env }: Context): Promise<Response> {
       }
       upstream.searchParams.set(k, v)
     }
-    if (company) {
+    // Shared entities (products' unit conversions) have no dataAreaId; D365
+    // rejects a company filter on them. They hold no company data to confine.
+    if (company && !GLOBAL_SETS.has(set)) {
       const filter = upstream.searchParams.get('$filter') ?? ''
       if (filter && !balanced(filter)) {
         return json(400, { error: 'Unbalanced parentheses or quotes in $filter.' })

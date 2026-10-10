@@ -753,8 +753,9 @@ Two **Cloudflare Pages** projects, both Git-connected to this repo's `main`
 | Who | anyone | anyone |
 | Variables | none | below — the Azure secret as an encrypted secret |
 
-`.github/workflows/deploy.yml` is the old GitHub Pages workflow; GitHub Pages
-is unpublished and it is no longer how the site deploys.
+Cloudflare builds straight from the repo; there is no GitHub Actions
+workflow. (The old GitHub Pages one was removed once Pages was unpublished —
+it failed on every push looking for a Pages site that no longer exists.)
 
 Routing is hash-based, so no SPA rewrite rules are needed.
 

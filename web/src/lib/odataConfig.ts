@@ -45,6 +45,11 @@ export interface EntityMap {
   required?: readonly string[]
   /** When true, a missing entity set degrades with a warning instead of failing. */
   optional?: boolean
+  /**
+   * Shared across legal entities — no dataAreaId, so no company filter may be
+   * added (D365 answers 400 "Could not find a property named 'dataAreaId'").
+   */
+  global?: boolean
 }
 
 /**
@@ -112,8 +117,11 @@ export const ODATA: {
       searchName: ['SearchName', 'ProductSearchName'],
       unit: ['InventoryUnitSymbol', 'PurchaseUnitSymbol'],
       salesPrice: 'SalesPrice',
-      // The item-master purchase price, shown beside what the orders paid.
+      // The item-master purchase price, shown beside what the orders paid. It
+      // is per purchase unit (FG865: per pallet), converted to the inventory
+      // unit by the provider.
       purchasePrice: 'PurchasePrice',
+      purchaseUnit: 'PurchaseUnitSymbol',
       // CONFIRM — the active inventory cost. Not every version exposes it on
       // the released product; when none of these exist the summary says so.
       costPrice: ['UnitCost', 'CostPrice', 'InventoryPrice', 'ProductionStandardCost'],
@@ -325,11 +333,13 @@ export const ODATA: {
     optional: true,
   },
 
-  // CONFIRM — product-specific unit conversions (EcoResProductSpecific
-  // UnitConversion). Used only when an item is bought in a different unit from
-  // the one it is stocked in and no receipt has shown the ratio yet.
-  // toQty = fromQty × Factor × Numerator / Denominator.
+  // Product-specific unit conversions (EcoResProductSpecificUnitConversion),
+  // confirmed against d365s-cd2. Used only when an item is bought in a
+  // different unit from the one it is stocked in and no receipt has shown the
+  // ratio yet. toQty = fromQty × Factor × Numerator / Denominator. Products
+  // are shared, so this entity has no company.
   unitConversions: {
+    global: true,
     set: ['ProductSpecificUnitOfMeasureConversions', 'ProductUnitOfMeasureConversions'],
     fields: {
       productNumber: ['ProductNumber', 'ItemNumber'],
@@ -361,6 +371,13 @@ export const ODATA: {
 }
 
 export type EntityKey = keyof typeof ODATA
+
+/** Entity sets shared across companies — the proxy must not company-scope them. */
+export const GLOBAL_SETS: ReadonlySet<string> = new Set(
+  Object.values(ODATA)
+    .filter((e) => e.global)
+    .flatMap((e) => [...candidates(e.set)]),
+)
 
 /** The candidate list behind a FieldSpec or set name. */
 export function candidates(spec: string | readonly string[]): readonly string[] {

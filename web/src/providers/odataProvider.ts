@@ -142,7 +142,12 @@ function unitPriceOf(line: Row | undefined, f: Record<string, string>): number {
 async function fetchItem(
   itemNumber: string,
   signal?: AbortSignal,
-): Promise<{ item: ItemInfo; exposes: { cost: boolean; sales: boolean } }> {
+): Promise<{
+  item: ItemInfo
+  exposes: { cost: boolean; sales: boolean }
+  /** Unit the released product's purchase price is quoted in. */
+  purchaseUnit: string
+}> {
   const e = await requireEntity('releasedProducts', signal)
   const rows = await odataQuery<Row>(
     e.set,
@@ -176,6 +181,7 @@ async function fetchItem(
       masterPurchasePrice: e.f.purchasePrice ? num(r, e.f.purchasePrice) : undefined,
     },
     exposes: { cost: Boolean(e.f.costPrice), sales: Boolean(e.f.salesPrice) },
+    purchaseUnit: str(r, e.f.purchaseUnit),
   }
 }
 
@@ -202,7 +208,7 @@ export function createODataProvider(): ProductCostProvider {
 
       // Bind every entity up front, in parallel; each is one $top=1 the first
       // time and free after that.
-      const [{ item, exposes }, prl, pol, poh, hc, lc, uom] = await Promise.all([
+      const [{ item, exposes, purchaseUnit: masterPurchaseUnit }, prl, pol, poh, hc, lc, uom] = await Promise.all([
         fetchItem(query.itemNumber, signal),
         requireEntity('productReceiptLines', signal),
         requireEntity('purchaseOrderLines', signal),
@@ -355,13 +361,19 @@ export function createODataProvider(): ProductCostProvider {
       const purchaseUnits = new Set(
         [...itemLines, ...receiptLines]
           .map((r) => (str(r, L.unit) || str(r, P.purchaseUnit)).toLowerCase())
+          .concat(masterPurchaseUnit.toLowerCase())
           .filter((u) => u && u !== item.unit.toLowerCase()),
       )
       const conversions =
         uom && purchaseUnits.size > 0
           ? await odataQuery<Row>(
               uom.set,
-              { filter: `${uom.f.productNumber} eq ${lit(item.itemNumber)}`, signal },
+              {
+                filter: `${uom.f.productNumber} eq ${lit(item.itemNumber)}`,
+                // Shared across companies: no dataAreaId to filter on.
+                companyScoped: false,
+                signal,
+              },
               'unitConversions',
             ).catch(() => [] as Row[])
           : []
@@ -570,6 +582,13 @@ export function createODataProvider(): ProductCostProvider {
           if (from === invUnit && !factorByUnit.has(to)) factorByUnit.set(to, 1 / ratio)
         }
       }
+      // The released product's purchase price, per inventory unit like
+      // everything else on the page. Left as it is when the factor is unknown.
+      const masterFactor = factorByUnit.get(masterPurchaseUnit.toLowerCase())
+      if (item.masterPurchasePrice !== undefined && masterFactor && masterFactor !== 1) {
+        item.masterPurchasePrice = item.masterPurchasePrice / masterFactor
+      }
+
       const unconverted = new Set<string>()
       /** Restates per-purchase-unit figures per inventory unit when the factor is known. */
       const inInventoryUnit = (
