@@ -53,6 +53,11 @@ export interface ChargeLine {
   amount: number
   /** amount / quantityReceived. Precomputed so the UI never divides by zero. */
   amountPerUnit: number
+  /**
+   * Landed Cost module costs say whether the figure is the voyage's estimate
+   * or a posted actual. Absent on charges that do not make the distinction.
+   */
+  status?: 'Estimated' | 'Actual'
 }
 
 /**

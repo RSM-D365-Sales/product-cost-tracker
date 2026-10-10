@@ -49,7 +49,13 @@ function ReadOnlyValue({
  */
 export interface LivePrices {
   masterPurchasePrice?: number
-  openOrders?: { quantity: number; purchasePrice: number; landedCost: number }
+  openOrders?: {
+    quantity: number
+    purchasePrice: number
+    landedCost: number
+    /** The open lines' unit — not the item's when they could not be converted. */
+    unit: string
+  }
 }
 
 export function SummaryPanel({
@@ -139,7 +145,7 @@ export function SummaryPanel({
             />
             <ReadOnlyValue
               label="Quantity on order"
-              value={`${qty(live.openOrders.quantity)} ${unit}`}
+              value={`${qty(live.openOrders.quantity)} ${live.openOrders.unit}`}
             />
           </div>
         ) : null}

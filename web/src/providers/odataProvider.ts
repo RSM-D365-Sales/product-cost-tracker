@@ -12,6 +12,7 @@ import { allocateHeaderCharge, costRow, summarise } from '../lib/calc'
 import { matchesQuery, resolveDateWindow } from '../lib/query'
 import {
   ALLOCATION_MAP,
+  DONE_LINE_STATUSES,
   FINANCIAL_CHARGE_CODES,
   OPEN_LINE_STATUSES,
   isoDateOrEmpty,
@@ -28,6 +29,8 @@ import {
 import { requireEntity, resolveEntity, type ResolvedEntity } from './odataSchema'
 import { ProviderError, type ProductCostProvider } from './types'
 import { productionNotImplemented } from './productionStub'
+import { liveItemName } from '../data/liveItems'
+import { fetchLandedCost } from './landedCostSource'
 
 /**
  * Standard-entity provider.
@@ -93,6 +96,39 @@ function allocationOf(raw: string): AllocationMethod {
 
 const lineKey = (po: string, line: number): string => `${po}|${line}`
 
+/**
+ * A charge's amount for the whole order (header) or the whole line, from its
+ * MarkupCategory. D365 stores the inputs rather than the result: a per-piece
+ * charge is a unit amount, a percentage charge is a rate on the net amount.
+ * `basis` is what the charge applies to — the order's or the line's net amount
+ * and ordered quantity.
+ */
+function chargeAmount(
+  ch: Row,
+  f: Record<string, string>,
+  basis: { amount: number; quantity: number },
+): number {
+  const computed = num(ch, f.calculatedAmount)
+  if (computed !== 0) return computed
+
+  const category = str(ch, f.category).toLowerCase()
+  if (category.startsWith('pcs') || category.includes('piece')) {
+    return num(ch, f.unitAmount) * basis.quantity
+  }
+  if (category.includes('percent')) {
+    return (num(ch, f.percentage) / 100) * basis.amount
+  }
+  if (category.startsWith('external')) return num(ch, f.externalAmount)
+  if (category.startsWith('proportional')) return num(ch, f.proportionalAmount)
+  // Fixed — and the fallback when the category is not exposed: the first
+  // amount that is actually populated.
+  return (
+    num(ch, f.fixedAmount) ||
+    num(ch, f.externalAmount) ||
+    num(ch, f.proportionalAmount)
+  )
+}
+
 /** Net unit price of an order line: line amount / quantity, else price / price unit. */
 function unitPriceOf(line: Row | undefined, f: Record<string, string>): number {
   if (!line) return 0
@@ -126,7 +162,11 @@ async function fetchItem(
   return {
     item: {
       itemNumber: str(r, e.f.itemNumber),
-      productName: str(r, e.f.productName) || itemNumber,
+      productName:
+        str(r, e.f.productName) ||
+        liveItemName(itemNumber) ||
+        str(r, e.f.searchName) ||
+        itemNumber,
       unit: str(r, e.f.unit) || 'ea',
       currency: 'USD',
       currentCost: num(r, e.f.costPrice),
@@ -162,13 +202,14 @@ export function createODataProvider(): ProductCostProvider {
 
       // Bind every entity up front, in parallel; each is one $top=1 the first
       // time and free after that.
-      const [{ item, exposes }, prl, pol, poh, hc, lc] = await Promise.all([
+      const [{ item, exposes }, prl, pol, poh, hc, lc, uom] = await Promise.all([
         fetchItem(query.itemNumber, signal),
         requireEntity('productReceiptLines', signal),
         requireEntity('purchaseOrderLines', signal),
         requireEntity('purchaseOrderHeaders', signal),
         resolveEntity('headerCharges', signal),
         resolveEntity('lineCharges', signal),
+        resolveEntity('unitConversions', signal),
       ])
       const P = prl.f
       const L = pol.f
@@ -221,22 +262,30 @@ export function createODataProvider(): ProductCostProvider {
         if (!L.lineStatus) return true
         return OPEN_LINE_STATUSES.includes(str(l, L.lineStatus))
       })
-      const openPos = [
-        ...new Set(openLines.map((l) => str(l, L.purchaseOrderNumber))),
+      // Lines already in stock. A line invoiced straight from the order, with
+      // no product receipt posted, has no receipt line at all — without this
+      // it would vanish from the page (PO002352 / PO002355 in d365s-cd2).
+      const doneLines = L.lineStatus
+        ? itemLines.filter((l) => DONE_LINE_STATUSES.includes(str(l, L.lineStatus)))
+        : []
+      const linePos = [
+        ...new Set(
+          [...openLines, ...doneLines].map((l) => str(l, L.purchaseOrderNumber)),
+        ),
       ]
 
-      // Everything already received against those open lines — in full, not
+      // Everything already received against those lines — in full, not
       // windowed, or a part-received line would look larger than it is.
-      const receivedAgainstOpen = await fetchByKeys(
+      const receivedAgainstLines = await fetchByKeys(
         prl,
         'productReceiptLines',
         P.purchaseOrderNumber,
-        openPos,
+        linePos,
         signal,
         `${P.itemNumber} eq ${lit(item.itemNumber)}`,
       )
       const receivedByLine = new Map<string, number>()
-      for (const r of receivedAgainstOpen) {
+      for (const r of receivedAgainstLines) {
         const k = lineKey(str(r, P.purchaseOrderNumber), num(r, P.purchaseLineNumber))
         receivedByLine.set(k, (receivedByLine.get(k) ?? 0) + num(r, P.receivedQuantity))
       }
@@ -255,9 +304,31 @@ export function createODataProvider(): ProductCostProvider {
           return { line: l, po, lineNo, ordered, remaining, date }
         })
         .filter((x) => x.remaining > 0)
+
+      // Received or invoiced lines with no receipt line anywhere: invoiced
+      // directly. Shown as posted, marked "Invoiced", at the line's delivery
+      // date — the closest date the order line carries.
+      const invoicedOnly = doneLines
+        .map((l) => {
+          const po = str(l, L.purchaseOrderNumber)
+          const lineNo = num(l, L.lineNumber)
+          return {
+            line: l,
+            po,
+            lineNo,
+            ordered: num(l, L.orderedQuantity),
+            date:
+              isoDateOrEmpty(l[L.confirmedDate]) || isoDateOrEmpty(l[L.requestedDate]),
+          }
+        })
+        .filter((x) => x.ordered > 0 && !receivedByLine.has(lineKey(x.po, x.lineNo)))
         .filter((x) => (!expFrom || !x.date || x.date >= expFrom) && (!expTo || !x.date || x.date <= expTo))
 
-      if (receiptLines.length === 0 && expectedSource.length === 0) {
+      if (
+        receiptLines.length === 0 &&
+        expectedSource.length === 0 &&
+        invoicedOnly.length === 0
+      ) {
         return {
           query,
           item,
@@ -275,13 +346,30 @@ export function createODataProvider(): ProductCostProvider {
         ...new Set([
           ...receiptLines.map((r) => str(r, P.purchaseOrderNumber)),
           ...expectedSource.map((x) => x.po),
+          ...invoicedOnly.map((x) => x.po),
         ]),
       ].filter(Boolean)
+
+      // Product-specific unit conversions, only needed when the item is bought
+      // in a unit other than its inventory unit.
+      const purchaseUnits = new Set(
+        [...itemLines, ...receiptLines]
+          .map((r) => (str(r, L.unit) || str(r, P.purchaseUnit)).toLowerCase())
+          .filter((u) => u && u !== item.unit.toLowerCase()),
+      )
+      const conversions =
+        uom && purchaseUnits.size > 0
+          ? await odataQuery<Row>(
+              uom.set,
+              { filter: `${uom.f.productNumber} eq ${lit(item.itemNumber)}`, signal },
+              'unitConversions',
+            ).catch(() => [] as Row[])
+          : []
 
       // --- 3. Everything hanging off those orders, in parallel. ------------
       // ALL lines of each order, not just this item's: the header charge was
       // spread across every one of them.
-      const [poLines, poHeaders, headerCharges, lineCharges] = await Promise.all([
+      const [poLines, poHeaders, headerCharges, lineCharges, landed] = await Promise.all([
         fetchByKeys(pol, 'purchaseOrderLines', L.purchaseOrderNumber, poNumbers, signal),
         fetchByKeys(poh, 'purchaseOrderHeaders', poh.f.purchaseOrderNumber, poNumbers, signal),
         hc
@@ -290,6 +378,17 @@ export function createODataProvider(): ProductCostProvider {
         lc
           ? fetchByKeys(lc, 'lineCharges', lc.f.purchaseOrderNumber, poNumbers, signal)
           : Promise.resolve([]),
+        // Landed Cost module: voyage, container, folio and PO-line costs.
+        fetchLandedCost(
+          poNumbers,
+          itemLines.map((l) => ({
+            po: str(l, L.purchaseOrderNumber),
+            line: num(l, L.lineNumber),
+            quantity: num(l, L.orderedQuantity),
+            amount: num(l, L.lineAmount),
+          })),
+          signal,
+        ),
       ])
 
       // --- 4. Index by purchase order. -------------------------------------
@@ -332,7 +431,10 @@ export function createODataProvider(): ProductCostProvider {
             const code = str(ch, f.chargeCode)
             if (!isFinancial(code)) continue
 
-            const total = num(ch, f.calculatedAmount) || num(ch, f.chargeValue)
+            const total = chargeAmount(ch, f, {
+              amount: basis.reduce((s, b) => s + b.netAmount, 0),
+              quantity: basis.reduce((s, b) => s + b.quantity, 0),
+            })
             if (total === 0) continue
 
             const method = allocationOf(str(ch, f.allocationMethod))
@@ -368,11 +470,15 @@ export function createODataProvider(): ProductCostProvider {
             const code = str(ch, f.chargeCode)
             if (!isFinancial(code)) continue
 
-            const amount = num(ch, f.calculatedAmount)
-            if (amount === 0) continue
-
             const key = lineKey(po, num(ch, f.lineNumber))
-            const orderedQty = num(lineByKey.get(key), L.orderedQuantity)
+            const poLine = lineByKey.get(key)
+            const orderedQty = num(poLine, L.orderedQuantity)
+
+            const amount = chargeAmount(ch, f, {
+              amount: num(poLine, L.lineAmount) || orderedQty * unitPriceOf(poLine, L),
+              quantity: orderedQty,
+            })
+            if (amount === 0) continue
 
             const list = allocated.get(key) ?? []
             list.push({
@@ -388,6 +494,22 @@ export function createODataProvider(): ProductCostProvider {
         }
       }
 
+      // Landed Cost module charges, per PO line. They come apportioned over
+      // the quantity on the voyage; restate them over the ordered quantity so
+      // chargesFor prorates them like every other charge.
+      for (const [key, lcLine] of landed.byLine) {
+        const poLine = lineByKey.get(key)
+        if (!poLine || lcLine.charges.length === 0) continue
+        const ordered = num(poLine, L.orderedQuantity)
+        const scale = lcLine.quantity > 0 && ordered > 0 ? ordered / lcLine.quantity : 1
+        const list = allocated.get(key) ?? []
+        for (const c of lcLine.charges) {
+          const amount = Math.round(c.amount * scale * 100) / 100
+          list.push({ ...c, amount, amountPerUnit: ordered ? amount / ordered : 0 })
+        }
+        allocated.set(key, list)
+      }
+
       /** The order-level allocation, prorated to `qty` of the ordered quantity. */
       const chargesFor = (
         key: string,
@@ -400,7 +522,10 @@ export function createODataProvider(): ProductCostProvider {
           const amount = Math.round(c.amount * share * 100) / 100
           return {
             ...c,
-            description: estimated ? `${c.description} (estimated)` : c.description,
+            // Landed Cost charges already say estimated or actual — an actual
+            // voyage cost on a not-yet-received line is still an actual.
+            description:
+              estimated && !c.status ? `${c.description} (estimated)` : c.description,
             amount,
             amountPerUnit: qty ? amount / qty : 0,
           }
@@ -417,7 +542,61 @@ export function createODataProvider(): ProductCostProvider {
         }
       }
 
-      // --- 6. One row per receipt line. ------------------------------------
+      // --- 6. Units. Rows are reported in the item's inventory unit, so a
+      //        pallet-bought item (FG865: purchased in PL, stocked in cs) does
+      //        not average pallets against cases. Each receipt states both
+      //        quantities, which gives the factor; open lines in the same
+      //        purchase unit reuse it. ----------------------------------------
+      const invUnit = item.unit.toLowerCase()
+      const factorByUnit = new Map<string, number>([[invUnit, 1]])
+      for (const r of [...receiptLines, ...receivedAgainstLines]) {
+        const unit = str(r, P.purchaseUnit).toLowerCase()
+        const purch = num(r, P.receivedQuantity)
+        const inv = num(r, P.receivedInventoryQuantity)
+        if (unit && purch > 0 && inv > 0 && !factorByUnit.has(unit)) {
+          factorByUnit.set(unit, inv / purch)
+        }
+      }
+      // Where no receipt has shown the ratio yet, the item's own conversion
+      // record — in either direction.
+      if (uom) {
+        for (const c of conversions) {
+          const from = str(c, uom.f.fromUnit).toLowerCase()
+          const to = str(c, uom.f.toUnit).toLowerCase()
+          const den = num(c, uom.f.denominator) || 1
+          const ratio = num(c, uom.f.factor) * (num(c, uom.f.numerator) || 1) / den
+          if (!(ratio > 0)) continue
+          if (to === invUnit && !factorByUnit.has(from)) factorByUnit.set(from, ratio)
+          if (from === invUnit && !factorByUnit.has(to)) factorByUnit.set(to, 1 / ratio)
+        }
+      }
+      const unconverted = new Set<string>()
+      /** Restates per-purchase-unit figures per inventory unit when the factor is known. */
+      const inInventoryUnit = (
+        qty: number,
+        unitPrice: number,
+        unit: string,
+        charges: ChargeLine[],
+        factorHint?: number,
+      ) => {
+        const factor = factorHint ?? factorByUnit.get(unit.toLowerCase())
+        if (!factor || factor === 1) {
+          if (!factor && unit) unconverted.add(unit)
+          return { quantity: qty, price: unitPrice, unit: factor ? item.unit : unit || item.unit, charges }
+        }
+        const quantity = qty * factor
+        return {
+          quantity,
+          price: unitPrice / factor,
+          unit: item.unit,
+          charges: charges.map((c) => ({
+            ...c,
+            amountPerUnit: quantity ? c.amount / quantity : 0,
+          })),
+        }
+      }
+
+      // --- 7. One row per receipt line. ------------------------------------
       const rows: ReceiptRow[] = []
       for (const rl of receiptLines) {
         const po = str(rl, P.purchaseOrderNumber)
@@ -427,6 +606,15 @@ export function createODataProvider(): ProductCostProvider {
 
         const key = lineKey(po, lineNo)
         const poLine = lineByKey.get(key)
+        const invQty = num(rl, P.receivedInventoryQuantity)
+        const q = inInventoryUnit(
+          receivedQty,
+          unitPriceOf(poLine, L),
+          str(rl, P.purchaseUnit) || str(poLine, L.unit),
+          chargesFor(key, receivedQty, num(poLine, L.orderedQuantity), false),
+          // This receipt's own ratio beats the item-level one.
+          invQty > 0 ? invQty / receivedQty : undefined,
+        )
 
         rows.push(
           costRow({
@@ -442,11 +630,43 @@ export function createODataProvider(): ProductCostProvider {
             warehouseId: str(rl, P.warehouseId) || str(poLine, L.warehouseId),
             locationId: str(rl, P.locationId) || undefined,
             batchNumber: str(rl, P.batchNumber) || undefined,
-            quantityReceived: receivedQty,
-            unit: str(poLine, L.unit) || item.unit,
-            purchasePriceFob: unitPriceOf(poLine, L),
+            quantityReceived: q.quantity,
+            unit: q.unit,
+            purchasePriceFob: q.price,
             sellingPrice: item.sellingPrice,
-            charges: chargesFor(key, receivedQty, num(poLine, L.orderedQuantity), false),
+            charges: q.charges,
+          }),
+        )
+      }
+
+      // Lines invoiced without a product receipt, as posted rows.
+      for (const x of invoicedOnly) {
+        const key = lineKey(x.po, x.lineNo)
+        const poLine = lineByKey.get(key) ?? x.line
+        const q = inInventoryUnit(
+          x.ordered,
+          unitPriceOf(poLine, L),
+          str(poLine, L.unit),
+          chargesFor(key, x.ordered, x.ordered, false),
+        )
+        rows.push(
+          costRow({
+            id: `${x.po}|invoiced|${x.lineNo}`,
+            sourceType: 'Purchase',
+            purchaseOrderNumber: x.po,
+            purchaseLineNumber: x.lineNo,
+            receiptNumber: 'Invoiced',
+            receiptDate: x.date || new Date().toISOString().slice(0, 10),
+            itemNumber: item.itemNumber,
+            productName: item.productName,
+            ...vendorOf(x.po),
+            siteId: str(poLine, L.siteId),
+            warehouseId: str(poLine, L.warehouseId),
+            quantityReceived: q.quantity,
+            unit: q.unit,
+            purchasePriceFob: q.price,
+            sellingPrice: item.sellingPrice,
+            charges: q.charges,
           }),
         )
       }
@@ -457,10 +677,16 @@ export function createODataProvider(): ProductCostProvider {
         .filter((r) => matchesQuery(r, query))
         .sort((a, b) => (a.receiptDate < b.receiptDate ? 1 : -1))
 
-      // --- 7. One Expected row per open line, soonest delivery first. ------
+      // --- 8. One Expected row per open line, soonest delivery first. ------
       const expected: ReceiptRow[] = expectedSource
         .map((x) => {
           const key = lineKey(x.po, x.lineNo)
+          const q = inInventoryUnit(
+            x.remaining,
+            unitPriceOf(lineByKey.get(key) ?? x.line, L),
+            str(x.line, L.unit),
+            chargesFor(key, x.remaining, x.ordered, true),
+          )
           return costRow({
             id: `${x.po}|expected|${x.lineNo}`,
             sourceType: 'Purchase',
@@ -476,11 +702,11 @@ export function createODataProvider(): ProductCostProvider {
             ...vendorOf(x.po),
             siteId: str(x.line, L.siteId),
             warehouseId: str(x.line, L.warehouseId),
-            quantityReceived: x.remaining,
-            unit: str(x.line, L.unit) || item.unit,
-            purchasePriceFob: unitPriceOf(lineByKey.get(key) ?? x.line, L),
+            quantityReceived: q.quantity,
+            unit: q.unit,
+            purchasePriceFob: q.price,
             sellingPrice: item.sellingPrice,
-            charges: chargesFor(key, x.remaining, x.ordered, true),
+            charges: q.charges,
           })
         })
         .sort((a, b) => (a.receiptDate < b.receiptDate ? -1 : 1))
@@ -497,7 +723,48 @@ export function createODataProvider(): ProductCostProvider {
         }
       }
 
-      // --- 8. Say plainly what could not be read. --------------------------
+      // --- 9. Say plainly what could not be read. --------------------------
+      // Only the repeats that touch this item's lines are this page's business.
+      const ownLines = new Set([...lineByKey.keys()].filter((k) =>
+        [...receiptLines, ...itemLines].some(
+          (r) =>
+            lineKey(
+              str(r, P.purchaseOrderNumber) || str(r, L.purchaseOrderNumber),
+              num(r, P.purchaseLineNumber) || num(r, L.lineNumber),
+            ) === k,
+        ),
+      ))
+      const repeats = landed.repeatedActuals.filter((r) => ownLines.has(r.scope))
+      if (repeats.length > 0) {
+        warnings.push(
+          `Landed cost actuals posted more than once: ${repeats
+            .map((r) => `${r.scope.replace('|', ' line ')} cost line ${r.costLineNumber} appears ${r.times}× in cost journal ${r.journal}`)
+            .join('; ')}. They are counted as recorded — check the journal in Landed cost if that is not intended.`,
+        )
+      }
+      if (landed.fallbacks > 0) {
+        warnings.push(
+          `${landed.fallbacks} landed cost${landed.fallbacks === 1 ? '' : 's'} could not be spread by ${landed.fallbacks === 1 ? 'its' : 'their'} apportionment method (weight, volume or measurement is not maintained on the voyage lines) and ${landed.fallbacks === 1 ? 'was' : 'were'} spread by quantity instead.`,
+        )
+      }
+      const foreign = [...landed.currencies].filter(
+        (c) => c && c.toUpperCase() !== item.currency.toUpperCase(),
+      )
+      if (foreign.length > 0) {
+        warnings.push(
+          `Some landed costs are in ${foreign.join(', ')} and are shown unconverted alongside ${item.currency}.`,
+        )
+      }
+      if (invoicedOnly.length > 0) {
+        warnings.push(
+          `${invoicedOnly.length === 1 ? '1 order line was' : `${invoicedOnly.length} order lines were`} invoiced without a product receipt. ${invoicedOnly.length === 1 ? 'It is' : 'They are'} shown as posted, marked "Invoiced", at the line's delivery date.`,
+        )
+      }
+      if (unconverted.size > 0) {
+        warnings.push(
+          `Some order lines are in ${[...unconverted].join(', ')} and no receipt yet shows how that converts to ${item.unit}, so those lines are shown per ${[...unconverted].join('/')}. They convert automatically once the first one is received.`,
+        )
+      }
       if (!hc && !lc) {
         warnings.push(
           'No purchase order charge entity was found in this environment, so add-on cost shows as zero and landed cost equals the purchase price.',

@@ -657,14 +657,18 @@ function livePricesOf(result: ProductCostResult): LivePrices {
     quantity > 0
       ? open.reduce((s, r) => s + pick(r) * r.quantityReceived, 0) / quantity
       : 0
+  const units = [...new Set(open.map((r) => r.unit))]
   return {
     masterPurchasePrice: result.item.masterPurchasePrice,
+    // Lines in different units cannot be added up; say so rather than sum
+    // pallets and cases.
     openOrders:
-      quantity > 0
+      quantity > 0 && units.length === 1
         ? {
             quantity,
             purchasePrice: weighted((r) => r.purchasePriceFob),
             landedCost: weighted((r) => r.landedCost),
+            unit: units[0],
           }
         : undefined,
   }

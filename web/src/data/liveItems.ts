@@ -45,6 +45,16 @@ export const LIVE_ITEMS: readonly LiveItem[] = [
 
 const LIVE_SET = new Set(LIVE_ITEMS.map((i) => i.itemNumber.toLowerCase()))
 
+/**
+ * The name listed here for a live item. Also the fallback on the page when the
+ * released product has no product name in D365 — as in d365s-cd2, where these
+ * items carry only a 20-character search name.
+ */
+export function liveItemName(itemNumber: string): string | undefined {
+  const n = itemNumber.trim().toLowerCase()
+  return LIVE_ITEMS.find((i) => i.itemNumber.toLowerCase() === n)?.productName
+}
+
 /** True for an item number that is read from Dynamics 365 rather than the seed. */
 export function isLiveItem(itemNumber: string): boolean {
   return LIVE_SET.has(itemNumber.trim().toLowerCase())

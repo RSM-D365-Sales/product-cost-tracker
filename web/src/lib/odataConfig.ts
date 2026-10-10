@@ -47,6 +47,40 @@ export interface EntityMap {
   optional?: boolean
 }
 
+/**
+ * How a charge's amount is stored (MarkupCategory) and the field each
+ * category reads. `calculatedAmount` covers versions that expose one computed
+ * figure instead; when bound and non-zero it wins.
+ */
+const CHARGE_AMOUNT_FIELDS = {
+  category: ['ChargeCategory', 'MarkupCategory'],
+  calculatedAmount: ['CalculatedChargeAmount', 'ChargeAmount'],
+  fixedAmount: ['FixedChargeAmount', 'ChargeValue'],
+  unitAmount: 'UnitChargeAmount',
+  percentage: 'ChargePercentage',
+  externalAmount: 'ExternalChargeAmount',
+  proportionalAmount: 'ProportionalChargeAmount',
+} as const
+
+/** Shared shape of the Landed Cost estimated-cost entities (ITMCostTrans*). */
+const LC_COST_FIELDS = {
+  lineNumber: 'LineNumber',
+  costType: 'ShipCostTypeId',
+  category: 'ShipCostCategory',
+  value: 'CostValue',
+  apportionment: 'ApportionmentMethod',
+  minimum: 'MinCostAmount',
+  currency: 'CurrencyCode',
+} as const
+
+/** Shared shape of the Landed Cost actual-cost journal entities. */
+const LC_ACTUAL_FIELDS = {
+  journal: 'JournalNum',
+  journalLine: 'JournalLineNumber',
+  costLineNumber: 'CostTransactionLineNumber',
+  amount: 'Amount',
+} as const
+
 export const ODATA: {
   releasedProducts: EntityMap
   purchaseOrderHeaders: EntityMap
@@ -54,6 +88,16 @@ export const ODATA: {
   productReceiptLines: EntityMap
   headerCharges: EntityMap
   lineCharges: EntityMap
+  lcLines: EntityMap
+  lcVoyageCosts: EntityMap
+  lcContainerCosts: EntityMap
+  lcFolioCosts: EntityMap
+  lcLineCosts: EntityMap
+  lcVoyageActuals: EntityMap
+  lcContainerActuals: EntityMap
+  lcFolioActuals: EntityMap
+  lcLineActuals: EntityMap
+  unitConversions: EntityMap
   sites: EntityMap
   warehouses: EntityMap
 } = {
@@ -61,7 +105,11 @@ export const ODATA: {
     set: 'ReleasedProductsV2',
     fields: {
       itemNumber: 'ItemNumber',
-      productName: ['ProductName', 'SearchName', 'ProductSearchName'],
+      // Only the real product name: in d365s-cd2 it is often absent or empty,
+      // and the provider then prefers data/liveItems.ts over the 20-character
+      // search name, which reads badly ("SPanishExtraVirginOl").
+      productName: 'ProductName',
+      searchName: ['SearchName', 'ProductSearchName'],
       unit: ['InventoryUnitSymbol', 'PurchaseUnitSymbol'],
       salesPrice: 'SalesPrice',
       // The item-master purchase price, shown beside what the orders paid.
@@ -129,6 +177,11 @@ export const ODATA: {
         'ReceivedInventoryQuantity',
         'Quantity',
       ],
+      // The same receipt in the inventory unit. Where the purchase unit
+      // differs (FG865 is bought by the pallet, stocked by the case) the ratio
+      // of the two is the item's conversion factor.
+      receivedInventoryQuantity: 'ReceivedInventoryQuantity',
+      purchaseUnit: 'PurchaseUnitSymbol',
       receiptDate: ['ProductReceiptDate', 'DeliveryDate', 'ReceiptDate'],
       siteId: ['ReceivingSiteId', 'SiteId', 'InventorySiteId'],
       warehouseId: ['ReceivingWarehouseId', 'WarehouseId', 'InventoryWarehouseId'],
@@ -145,21 +198,19 @@ export const ODATA: {
     ],
   },
 
-  // CONFIRM — MarkupTrans-backed. Some environments expose a single
-  // "PurchaseOrderCharges" set with a Level/RefType discriminator instead of
-  // this header/line split; if so, point both entries at it and add the
-  // discriminator to `extraFilter` in the provider. Optional: without them the
+  // MarkupTrans-backed. Confirmed against d365s-cd2 (2026-10-09): there is no
+  // single computed amount — the entity carries the charge CATEGORY plus one
+  // amount field per category, and the provider computes the amount from
+  // those (see chargeAmount in odataProvider.ts). Optional: without them the
   // inquiry still runs, at FOB, and says so.
   headerCharges: {
     set: ['PurchaseOrderHeaderCharges', 'PurchaseOrderHeaderChargesV2'],
     fields: {
       purchaseOrderNumber: 'PurchaseOrderNumber',
-      chargeCode: ['ChargeCode', 'PurchaseChargeCode'],
-      description: ['Description', 'ChargeDescription'],
-      chargeValue: ['ChargeValue', 'FixedChargeAmount'],
-      calculatedAmount: ['CalculatedChargeAmount', 'ChargeAmount'],
+      chargeCode: ['PurchaseChargeCode', 'ChargeCode'],
+      description: ['ChargeDescription', 'Description'],
+      ...CHARGE_AMOUNT_FIELDS,
       allocationMethod: ['ChargeAllocationMethod', 'AllocationMethod'],
-      currency: 'CurrencyCode',
     },
     required: ['purchaseOrderNumber', 'chargeCode'],
     optional: true,
@@ -170,12 +221,125 @@ export const ODATA: {
     fields: {
       purchaseOrderNumber: 'PurchaseOrderNumber',
       lineNumber: ['PurchaseOrderLineNumber', 'LineNumber'],
-      chargeCode: ['ChargeCode', 'PurchaseChargeCode'],
-      description: ['Description', 'ChargeDescription'],
-      calculatedAmount: ['CalculatedChargeAmount', 'ChargeAmount', 'FixedChargeAmount'],
-      currency: 'CurrencyCode',
+      chargeCode: ['PurchaseChargeCode', 'ChargeCode'],
+      description: ['ChargeDescription', 'Description'],
+      ...CHARGE_AMOUNT_FIELDS,
     },
     required: ['purchaseOrderNumber', 'lineNumber', 'chargeCode'],
+    optional: true,
+  },
+
+  // ===================== LANDED COST MODULE (ITM*) ========================
+  // Confirmed against d365s-cd2 (2026-10-09). A PO line is put on a voyage
+  // (ShipId), optionally in a shipping container and a folio. Estimated costs
+  // sit at voyage, container, folio or PO-line level, each with a cost type,
+  // a category (Fixed / Rate / Percent), a value and an apportionment method;
+  // posted actuals are cost-journal lines that point back at the estimated
+  // cost line by number. No entity carries D365's per-line apportioned result,
+  // so lib/landedCost.ts apportions — see there. All optional: an environment
+  // without the module simply has no landed costs to add.
+
+  /** Which PO lines are on which voyage / container / folio, with the bases. */
+  lcLines: {
+    set: 'LandedCostPurchaseLines',
+    fields: {
+      purchaseOrderNumber: 'PurchaseOrderId',
+      lineNumber: 'PurchaseLineNumber',
+      voyageId: 'ShipId',
+      containerId: 'ShipContainerId',
+      folioId: 'ShipFolioId',
+      itemNumber: 'ShipItemId',
+      quantity: 'ShipQty',
+      amount: 'LineAmountMST',
+      weight: 'Weight',
+      volume: 'Volume',
+      measurement: 'ShipMeasurement',
+    },
+    required: ['purchaseOrderNumber', 'lineNumber', 'voyageId'],
+    optional: true,
+  },
+
+  lcVoyageCosts: {
+    set: 'CostTransVoyageTables',
+    fields: { ...LC_COST_FIELDS, voyageId: 'ShipId' },
+    required: ['voyageId', 'lineNumber', 'costType'],
+    optional: true,
+  },
+
+  lcContainerCosts: {
+    set: 'CostTransShippingContainerTables',
+    fields: { ...LC_COST_FIELDS, voyageId: 'ShipId', containerId: 'ShipContainerId' },
+    required: ['voyageId', 'containerId', 'lineNumber', 'costType'],
+    optional: true,
+  },
+
+  lcFolioCosts: {
+    set: 'CostTransFolioTables',
+    fields: { ...LC_COST_FIELDS, folioId: 'ShipFolioId' },
+    required: ['folioId', 'lineNumber', 'costType'],
+    optional: true,
+  },
+
+  /** Costs set directly on a PO line (tariffs, duty %). */
+  lcLineCosts: {
+    set: 'CostTransItemTables',
+    fields: {
+      ...LC_COST_FIELDS,
+      purchaseOrderNumber: 'PurchaseOrderId',
+      purchaseLineNumber: 'PurchaseOrderLineNumber',
+      adjustment: 'AdjustmentAmount',
+    },
+    required: ['purchaseOrderNumber', 'purchaseLineNumber', 'lineNumber', 'costType'],
+    optional: true,
+  },
+
+  lcVoyageActuals: {
+    set: 'LedgerJournalCostLinesVoyagesTables',
+    fields: { ...LC_ACTUAL_FIELDS, voyageId: 'ShipId' },
+    required: ['voyageId', 'costLineNumber', 'amount'],
+    optional: true,
+  },
+
+  lcContainerActuals: {
+    set: 'LedgerJournalCostLinesContainersTables',
+    fields: { ...LC_ACTUAL_FIELDS, voyageId: 'ShipId', containerId: 'ShipContainerId' },
+    required: ['voyageId', 'containerId', 'costLineNumber', 'amount'],
+    optional: true,
+  },
+
+  lcFolioActuals: {
+    set: 'LedgerJournalCostLinesFoliosTables',
+    fields: { ...LC_ACTUAL_FIELDS, folioId: ['ShipFolioId', 'FolioId'] },
+    required: ['folioId', 'costLineNumber', 'amount'],
+    optional: true,
+  },
+
+  lcLineActuals: {
+    set: 'LedgerJournalCostLinesPurchLineTables',
+    fields: {
+      ...LC_ACTUAL_FIELDS,
+      purchaseOrderNumber: 'PurchaseOrderId',
+      purchaseLineNumber: 'PurchaseOrderLineNumber',
+    },
+    required: ['purchaseOrderNumber', 'purchaseLineNumber', 'costLineNumber', 'amount'],
+    optional: true,
+  },
+
+  // CONFIRM — product-specific unit conversions (EcoResProductSpecific
+  // UnitConversion). Used only when an item is bought in a different unit from
+  // the one it is stocked in and no receipt has shown the ratio yet.
+  // toQty = fromQty × Factor × Numerator / Denominator.
+  unitConversions: {
+    set: ['ProductSpecificUnitOfMeasureConversions', 'ProductUnitOfMeasureConversions'],
+    fields: {
+      productNumber: ['ProductNumber', 'ItemNumber'],
+      fromUnit: 'FromUnitSymbol',
+      toUnit: 'ToUnitSymbol',
+      factor: 'Factor',
+      numerator: 'Numerator',
+      denominator: 'Denominator',
+    },
+    required: ['productNumber', 'fromUnit', 'toUnit', 'factor'],
     optional: true,
   },
 
@@ -232,6 +396,9 @@ export function isoDateOrEmpty(value: unknown): string {
 
 /** PurchStatus values that mean the line is still waiting for goods. */
 export const OPEN_LINE_STATUSES = ['Backorder', 'None', 'OpenOrder']
+
+/** PurchStatus values that mean the goods have been taken into stock. */
+export const DONE_LINE_STATUSES = ['Received', 'Invoiced']
 
 /**
  * Charge codes that are FINANCIAL (expensed, the "AOC" bucket in the inquiry)

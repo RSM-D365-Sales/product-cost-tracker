@@ -102,7 +102,11 @@ export function ReceiptGrid({
             <DrillLink
               value={r.receiptNumber}
               href={
-                isProduction(r) || !canDeepLink(r.itemNumber)
+                // "Invoiced" marks a line invoiced without a product receipt
+                // (odataProvider) — there is no receipt record to open.
+                isProduction(r) ||
+                !canDeepLink(r.itemNumber) ||
+                r.receiptNumber === 'Invoiced'
                   ? null
                   : productReceiptLink(r.receiptNumber)
               }

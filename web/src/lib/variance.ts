@@ -49,6 +49,15 @@ const CAUSE_OF_CODE: Record<string, { key: string; label: string }> = {
   INSPECT: { key: 'COMPLIANCE', label: 'Inspection & testing' },
   LABTEST: { key: 'COMPLIANCE', label: 'Inspection & testing' },
   CASTOR: { key: 'STORAGE', label: 'Storage & handling' },
+  // Landed Cost module cost types as set up in d365s-cd2 (voyage, container
+  // and PO-line costs).
+  FRTSS: { key: 'TRANSPORT', label: 'Transportation' },
+  CARTAGE: { key: 'TRANSPORT', label: 'Transportation' },
+  AIR: { key: 'TRANSPORT', label: 'Transportation' },
+  HARBOR: { key: 'CUSTOMS', label: 'Customs & border' },
+  DUTW: { key: 'CUSTOMS', label: 'Customs & border' },
+  DUTY: { key: 'CUSTOMS', label: 'Customs & border' },
+  TARIFF: { key: 'CUSTOMS', label: 'Customs & border' },
   // Conversion codes on production receipts.
   PACK: { key: 'PACKAGING', label: 'Packaging' },
   CUP: { key: 'PACKAGING', label: 'Packaging' },
@@ -168,7 +177,8 @@ interface CauseAccumulator {
 }
 
 function causeOfCharge(code: string, description: string): { key: string; label: string } {
-  return CAUSE_OF_CODE[code] ?? { key: code, label: description || code }
+  // Case-insensitive: D365 cost types arrive as "Freight", "Tariff", …
+  return CAUSE_OF_CODE[code.toUpperCase()] ?? { key: code, label: description || code }
 }
 
 /**

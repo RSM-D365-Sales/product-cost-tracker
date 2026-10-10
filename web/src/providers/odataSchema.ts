@@ -71,6 +71,9 @@ async function resolve(
       sample = await odataQuery(set, { top: 1, anyCompany: true, signal }, key)
     } catch (e) {
       if (e instanceof ProviderError && e.status === 404) continue
+      // An optional entity the hosted proxy does not allow yet (an older
+      // deployment of functions/api) is as good as absent.
+      if (e instanceof ProviderError && e.status === 403 && entity.optional) continue
       throw e
     }
 
