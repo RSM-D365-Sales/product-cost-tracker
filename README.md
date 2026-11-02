@@ -680,6 +680,7 @@ web/                          Vite + React 18 + TS + Tailwind
   src/data/nettingSeed.ts     Pegged demand, derived lot-for-lot from supply
   src/components/d365/        F&O kit (shell, nav pane, action pane, FastTab, grid)
   src/pages/                  The two inquiries
+  src/editions/               Build-time editions: full copies of the modules each overrides
 server/                       Node proxy: Azure AD auth, OData passthrough, probe
 functions/api/                The same proxy as a Cloudflare Pages Function, company-scoped
 scripts/check-live.ts         Pre-demo check of the live items against an environment
@@ -738,6 +739,58 @@ Writes `verify-inquiry.png`, `verify-variance.png`, `verify-impact.png`,
 
 Uses system Edge via `channel: 'msedge'`; the Playwright browser CDN is blocked
 by the corporate proxy.
+
+## Editions
+
+`VITE_EDITION` picks an edition of the app at build time, so one repo can host
+more than one Cloudflare Pages project. Unset, the build is the default edition
+above, byte for byte: nothing in the default code branches on it.
+
+| `VITE_EDITION` | Edition | Company |
+| --- | --- | --- |
+| unset | Default | Bluestem Fresh Produce (`BSFP`) |
+| `wheels` | OTR wheels | Northline Wheel & Rim (`NWR`), a fictional maker of off-the-road steel wheels and rims |
+
+How it works: a small plugin in [`web/vite.config.ts`](web/vite.config.ts)
+redirects any relative import of `src/<path>` to `src/editions/<edition>/<path>`
+when that file exists, so an edition is a mirror tree holding only the modules
+it overrides, as full copies. The plugin also retitles `index.html` and defaults
+`VITE_COMPANY`; `tailwind.config.js` keeps `src/editions` out of the default
+build's scan so an edition's strings cannot add CSS to it.
+
+The cost of full copies is that a fix to an overridden module has to be made in
+both places. The list is `web/src/editions/wheels/`, and most of it is labels:
+the wheels edition has no shelf life, so the shared expiry mechanics carry a
+**mill cert review date** instead, after which a heat is held for re-test.
+
+To build it locally (PowerShell). Output goes to `web/dist`, so run `npm run build`
+with the variables cleared afterwards to get the default edition back:
+
+```powershell
+$env:VITE_EDITION='wheels'; $env:VITE_COMPANY='NWR'; npm run build
+Remove-Item Env:VITE_EDITION, Env:VITE_COMPANY
+```
+
+Start at `RM-PLT-A572` on the product cost inquiry and `FG-OTR-5129` on the
+production cost inquiry. On the latter, tick `PLTA-W1` in the parameters and run
+again to clear the plate at risk. All wheels dates are relative to today, so the
+demo does not age. `verify.mjs` covers the default edition only.
+
+### Adding a Pages project for an edition
+
+Create it in the Cloudflare dashboard, the same way as the live project: Workers
+& Pages → Create → **Pages** tab → Connect to Git →
+`RSM-D365-Sales/product-cost-tracker`, branch `main`, build command
+`npm run build`, output directory `web/dist`. Then add these under Settings →
+Variables and Secrets, Production, and **Retry deployment**:
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `NODE_VERSION` | text | `20` |
+| `VITE_EDITION` | text | `wheels` |
+| `VITE_COMPANY` | text | `NWR` |
+
+Leave `VITE_DATA_PROVIDER` unset: the edition runs on its seeded data.
 
 ## Deploying the demo
 

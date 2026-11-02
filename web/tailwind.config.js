@@ -1,6 +1,10 @@
+// Editions only scan into their own build: a word in an edition's data that
+// happens to be a utility class ("ring", say) must not reach the default CSS.
+const editionContent = process.env.VITE_EDITION ? [] : ['!./src/editions/**']
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./index.html', './src/**/*.{ts,tsx}', ...editionContent],
   theme: {
     extend: {
       fontFamily: {
